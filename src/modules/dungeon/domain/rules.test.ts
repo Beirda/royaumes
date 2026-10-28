@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DUNGEON_LENGTH, EXPLORE_MS, ROUND_MS } from './content'
+import { DUNGEON_LENGTH, EXPLORE_MS, HERO, ROUND_MS } from './content'
 import { evolve, type GameEvent, type GameState, initialState, type Room, replay } from './game'
 import { decide, type GameCommand, generateRooms, resolveRound } from './rules'
 
@@ -234,9 +234,9 @@ describe('Donjon - combat', () => {
 })
 
 describe("Donjon - fin de l'expédition", () => {
-  /** Alice, seule, entre dans la salle du troll après avoir traversé cinq salles vides. */
-  function facingTroll(): GameState {
-    let state = replay([created, started([EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, TROLL])])
+  /** Alice entre dans la salle du troll après avoir traversé cinq salles vides. */
+  function facingTroll(initialEvents: GameEvent[] = [created]): GameState {
+    let state = replay([...initialEvents, started([EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, TROLL])])
     for (let door = 0; door < DUNGEON_LENGTH; door++) {
       state = play(state, { type: 'OpenDoor', playerId: 'alice' }).state
     }
@@ -267,6 +267,76 @@ describe("Donjon - fin de l'expédition", () => {
     expect(after.phase).toBe('won')
   })
 
+  it('divise équitablement le butin entre les participants (joueurs et mercenaires bots)', () => {
+    // 1 joueur seul : 100% du butin
+    const solo = facingTroll([created])
+    const soloWounded = evolve(solo, wound(solo, 'm0', 18))
+    const soloEnded = play(soloWounded, {
+      type: 'SubmitAction',
+      playerId: 'alice',
+      round: soloWounded.round,
+      action: { type: 'attack', target: 'm0' },
+    }).events.find((e) => e.type === 'GameEnded')
+    expect(soloEnded?.data).toMatchObject({ result: 'won', loot: solo.loot, share: solo.loot })
+
+    // 1 joueur + 1 mercenaire (bot) : 50% du butin
+    const c1: GameEvent = {
+      type: 'CompanionAdded',
+      data: { companionId: 'companion-1', name: 'Mercenaire 1 (bot)', hero: HERO, at: T0 },
+    }
+    const with1Bot = facingTroll([created, c1])
+    const wounded1 = evolve(with1Bot, wound(with1Bot, 'm0', 18))
+    const ended1 = play(wounded1, {
+      type: 'SubmitAction',
+      playerId: 'alice',
+      round: wounded1.round,
+      action: { type: 'attack', target: 'm0' },
+    }).events.find((e) => e.type === 'GameEnded')
+    expect(ended1?.data).toMatchObject({
+      result: 'won',
+      loot: with1Bot.loot,
+      share: Math.floor(with1Bot.loot / 2),
+    })
+
+    // 1 joueur + 2 mercenaires (bots) : 33% du butin
+    const c2: GameEvent = {
+      type: 'CompanionAdded',
+      data: { companionId: 'companion-2', name: 'Mercenaire 2 (bot)', hero: HERO, at: T0 },
+    }
+    const with2Bots = facingTroll([created, c1, c2])
+    const wounded2 = evolve(with2Bots, wound(with2Bots, 'm0', 18))
+    const ended2 = play(wounded2, {
+      type: 'SubmitAction',
+      playerId: 'alice',
+      round: wounded2.round,
+      action: { type: 'attack', target: 'm0' },
+    }).events.find((e) => e.type === 'GameEnded')
+    expect(ended2?.data).toMatchObject({
+      result: 'won',
+      loot: with2Bots.loot,
+      share: Math.floor(with2Bots.loot / 3),
+    })
+
+    // 1 joueur + 3 mercenaires (bots) : 25% du butin
+    const c3: GameEvent = {
+      type: 'CompanionAdded',
+      data: { companionId: 'companion-3', name: 'Mercenaire 3 (bot)', hero: HERO, at: T0 },
+    }
+    const with3Bots = facingTroll([created, c1, c2, c3])
+    const wounded3 = evolve(with3Bots, wound(with3Bots, 'm0', 18))
+    const ended3 = play(wounded3, {
+      type: 'SubmitAction',
+      playerId: 'alice',
+      round: wounded3.round,
+      action: { type: 'attack', target: 'm0' },
+    }).events.find((e) => e.type === 'GameEnded')
+    expect(ended3?.data).toMatchObject({
+      result: 'won',
+      loot: with3Bots.loot,
+      share: Math.floor(with3Bots.loot / 4),
+    })
+  })
+
   it('est perdue lorsque tous les héros sont tombés', () => {
     const state = evolve(facingTroll(), wound(facingTroll(), 'alice', 29))
     const { state: after } = play(state, {
@@ -292,7 +362,7 @@ describe('Donjon - compagnons', () => {
     expect(heroes.map((hero) => [hero.name, hero.companion])).toEqual([
       ['Alice', false],
       ['Bob', false],
-      ['Compagnon 1', true],
+      ['Mercenaire 1 (bot)', true],
     ])
     const inProgress = replay([created, bobJoined, started(GOBLIN_FIRST)])
     expect(decide(inProgress, addCompanion, T0)).toEqual({

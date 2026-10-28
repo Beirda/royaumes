@@ -216,7 +216,9 @@ export function resolveRound(state: GameState, at: number): GameEvent[] {
   if (!playersLeft || (!monstersLeft && lastRoom)) {
     const result = playersLeft ? 'won' : 'lost'
     const heroIds = state.heroes.map((hero) => hero.id)
-    events.push({ type: 'GameEnded', data: { result, loot: state.loot, heroIds, at } })
+    const share =
+      result === 'won' && heroIds.length > 0 ? Math.floor(state.loot / heroIds.length) : 0
+    events.push({ type: 'GameEnded', data: { result, loot: state.loot, heroIds, share, at } })
   }
   return events
 }
@@ -306,7 +308,7 @@ function decideCommand(state: GameState, command: GameCommand, now: number): Dec
       if (state.phase !== 'lobby') return fail({ code: 'WRONG_PHASE', phase: state.phase })
       if (command.playerId !== state.hostId) return fail({ code: 'NOT_HOST' })
       if (state.heroes.length >= MAX_HEROES) return fail({ code: 'GAME_FULL' })
-      // Les compagnons sont numérotés dans l'ordre de leur arrivée.
+      // Les mercenaires (bots) sont numérotés dans l'ordre de leur arrivée.
       const number = state.heroes.filter((hero) => hero.companion).length + 1
       return {
         ok: true,
@@ -315,7 +317,7 @@ function decideCommand(state: GameState, command: GameCommand, now: number): Dec
             type: 'CompanionAdded',
             data: {
               companionId: `companion-${number}`,
-              name: `Compagnon ${number}`,
+              name: `Mercenaire ${number} (bot)`,
               hero: { ...HERO },
               at: now,
             },

@@ -58,7 +58,12 @@ describe('Compagnon dans la vue', () => {
     },
     {
       type: 'CompanionAdded',
-      data: { companionId: 'companion-1', name: 'Compagnon 1', hero: { hp: 30, attack: 6 }, at: 0 },
+      data: {
+        companionId: 'companion-1',
+        name: 'Mercenaire 1 (bot)',
+        hero: { hp: 30, attack: 6 },
+        at: 0,
+      },
     },
     {
       type: 'GameStarted',

@@ -23,13 +23,21 @@ export interface DungeonModuleDeps {
   projections: ProjectionRunner
   /** Horloge de référence ; l'heure réelle par défaut. */
   clock?: () => number
+  /** Déclenche la distribution de la boîte d'envoi après un versement au Village. */
+  dispatch?: () => Promise<unknown>
 }
 
 /** Fabrique du module : assemble les adaptateurs, le service, l'API et la règle des canaux. */
-export function createDungeonModule({ store, db, projections, clock }: DungeonModuleDeps) {
+export function createDungeonModule({
+  store,
+  db,
+  projections,
+  clock,
+  dispatch,
+}: DungeonModuleDeps) {
   const repo = createEventStoreGameRepository(store)
   const openGames = createDrizzleOpenGamesReader(db, projections)
-  const service = createDungeonService(repo, openGames, { clock })
+  const service = createDungeonService(repo, openGames, { clock, dispatch })
 
   // Règle d'accès aux canaux des expéditions : seuls les membres d'une expédition
   // peuvent l'écouter. Le canal est discret : il ne transmet aucune donnée d'événement,

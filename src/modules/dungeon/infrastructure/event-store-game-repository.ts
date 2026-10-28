@@ -14,8 +14,18 @@ export function createEventStoreGameRepository(store: EventStore): GameRepositor
       return { state: replay(stored.map(toGameEvent)), version: stored.at(-1)?.version ?? 0 }
     },
 
-    async save(gameId, expectedVersion, events) {
-      await store.append(gameChannel(gameId), expectedVersion, events as unknown as NewEvent[])
+    async save(gameId, expectedVersion, events, messages) {
+      await store.append(
+        gameChannel(gameId),
+        expectedVersion,
+        events as unknown as NewEvent[],
+        messages,
+      )
+    },
+
+    async hasVillage(playerId) {
+      const villageEvents = await store.read(`village-${playerId}`)
+      return villageEvents.some((e) => e.type === 'VillageFounded')
     },
   }
 }

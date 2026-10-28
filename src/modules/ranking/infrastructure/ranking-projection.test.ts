@@ -52,8 +52,56 @@ describe('Projection du classement', () => {
       label: 'ALICE',
       gamesPlayed: 1,
       gamesWon: 1,
-      gold: 40,
+      gold: 13,
+      bestLoot: 13,
     })
+    expect(await entryOf('bob')).toMatchObject({
+      label: 'BOB',
+      gamesPlayed: 1,
+      gamesWon: 1,
+      gold: 13,
+      bestLoot: 13,
+    })
+  })
+
+  it('divise le butin à 50% avec 1 bot, 33% avec 2 bots, 25% avec 3 bots ou 2 joueurs et 2 bots', async () => {
+    // 1 joueur + 1 bot : 50% de 40 = 20
+    await store.append('dungeon-solo1', 0, [
+      created('player1'),
+      companion,
+      ended('won', 40, ['player1', 'companion-1']),
+    ])
+    expect(await entryOf('player1')).toMatchObject({ gold: 20, bestLoot: 20 })
+
+    // 1 joueur + 2 bots : 33% (1/3) de 30 = 10
+    await store.append('dungeon-solo2', 0, [
+      created('player2'),
+      companion,
+      { type: 'CompanionAdded', data: { companionId: 'companion-2' } },
+      ended('won', 30, ['player2', 'companion-1', 'companion-2']),
+    ])
+    expect(await entryOf('player2')).toMatchObject({ gold: 10, bestLoot: 10 })
+
+    // 1 joueur + 3 bots : 25% de 40 = 10
+    await store.append('dungeon-solo3', 0, [
+      created('player3'),
+      companion,
+      { type: 'CompanionAdded', data: { companionId: 'companion-2' } },
+      { type: 'CompanionAdded', data: { companionId: 'companion-3' } },
+      ended('won', 40, ['player3', 'companion-1', 'companion-2', 'companion-3']),
+    ])
+    expect(await entryOf('player3')).toMatchObject({ gold: 10, bestLoot: 10 })
+
+    // 2 joueurs + 2 bots : 25% de 100 = 25 chacun
+    await store.append('dungeon-multi', 0, [
+      created('pA'),
+      joined('pB'),
+      companion,
+      { type: 'CompanionAdded', data: { companionId: 'companion-2' } },
+      ended('won', 100, ['pA', 'pB', 'companion-1', 'companion-2']),
+    ])
+    expect(await entryOf('pA')).toMatchObject({ gold: 25, bestLoot: 25 })
+    expect(await entryOf('pB')).toMatchObject({ gold: 25, bestLoot: 25 })
   })
 
   it('compte une défaite comme une expédition, sans victoire ni or', async () => {

@@ -84,4 +84,15 @@ describe('Donjon - vue filtrée', () => {
   it("renvoie null pour une expédition qui n'existe pas", () => {
     expect(toView(initialState, 'alice', T0)).toBeNull()
   })
+
+  it('calcule la part de butin revenant à chaque héros', () => {
+    expect(toView(state, 'alice', T0)?.share).toBe(0)
+
+    const withTreasure = evolve(state, {
+      type: 'RoomEntered',
+      data: { heroId: 'alice', room: 1, deadline: null, at: T0 },
+    })
+    expect(toView(withTreasure, 'alice', T0)?.loot).toBe(30)
+    expect(toView(withTreasure, 'alice', T0)?.share).toBe(15)
+  })
 })

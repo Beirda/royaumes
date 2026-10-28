@@ -40,6 +40,8 @@ export interface GameView {
   deadline: number | null
   lastRound: GameState['lastRound']
   loot: number
+  /** Part de butin revenant à chaque participant. */
+  share: number
 }
 
 /**
@@ -79,5 +81,8 @@ export function toView(state: GameState, viewerId: string, now: number): GameVie
     deadline: current.deadline,
     lastRound: current.lastRound,
     loot: current.loot,
+    // La part est calculée en divisant équitablement le butin entre tous les participants
+    // (joueurs et mercenaires bots). Elle n'est significative qu'une fois le jeu terminé (won).
+    share: current.heroes.length > 0 ? Math.floor(current.loot / current.heroes.length) : 0,
   }
 }

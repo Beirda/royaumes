@@ -165,7 +165,14 @@ export type GameEvent =
     }
   | {
       type: 'GameEnded'
-      data: { result: 'won' | 'lost'; loot: number; heroIds: string[]; at: number }
+      data: {
+        result: 'won' | 'lost'
+        loot: number
+        heroIds: string[]
+        /** Part de butin revenant à chaque participant (joueurs et mercenaires). */
+        share?: number
+        at: number
+      }
     }
 
 // ---------------------------------------------------------------------------

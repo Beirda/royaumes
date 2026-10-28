@@ -1,4 +1,6 @@
+import { REALM_TOPICS } from '@/modules/realm/contracts'
 import { withOptimisticRetry } from '@/platform/event-store/retry'
+import type { NewMessage } from '@/platform/outbox/outbox'
 import { DEFAULT_DIFFICULTY, type Difficulty, MAX_HEROES } from '../domain/content'
 import { decide, type GameCommand, type GameError } from '../domain/rules'
 import { type GameView, toView } from '../domain/view'
@@ -22,6 +24,8 @@ export interface DungeonServiceOptions {
   newId?: () => string
   /** Graine d'une nouvelle expédition ; un entier aléatoire sur 32 bits par défaut. */
   newSeed?: () => number
+  /** Déclenche la distribution de la boîte d'envoi après un versement au Village. */
+  dispatch?: () => Promise<unknown>
 }
 
 /**
@@ -36,6 +40,7 @@ export function createDungeonService(
     clock = () => Date.now(),
     newId = () => crypto.randomUUID(),
     newSeed = () => crypto.getRandomValues(new Uint32Array(1))[0],
+    dispatch,
   }: DungeonServiceOptions = {},
 ) {
   /**
@@ -49,7 +54,36 @@ export function createDungeonService(
       const now = clock()
       const decision = decide(state, command, now)
       if (!decision.ok) return decision
-      await repo.save(gameId, version, decision.events)
+
+      const ended = decision.events.find((e) => e.type === 'GameEnded')
+      const messages: NewMessage[] = []
+      if (ended && ended.data.result === 'won') {
+        // La part de butin revenant à chaque joueur est déjà calculée par le domaine (ended.data.share).
+        // On utilise cette valeur canonique plutôt que de la recalculer, pour garantir la cohérence.
+        const share = ended.data.share ?? 0
+        if (share > 0) {
+          const players = state.heroes.filter((h) => !h.companion)
+          for (const hero of players) {
+            const hasVillage = repo.hasVillage ? await repo.hasVillage(hero.id) : false
+            if (hasVillage) {
+              messages.push({
+                topic: REALM_TOPICS.deposit,
+                payload: {
+                  transferId: `dungeon-${gameId}-${hero.id}`,
+                  playerId: hero.id,
+                  resources: { gold: share },
+                },
+              })
+            }
+          }
+        }
+      }
+
+      await repo.save(gameId, version, decision.events, messages)
+      if (messages.length > 0 && dispatch) {
+        await dispatch()
+      }
+
       const updated = await repo.load(gameId)
       const view = toView(updated.state, viewerId, now)
       // La décision a été acceptée : l'expédition existe, et sa vue n'est donc jamais null.

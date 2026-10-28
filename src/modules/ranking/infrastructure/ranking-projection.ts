@@ -21,6 +21,8 @@ interface PlayerJoinedData {
 interface GameEndedData {
   result: 'won' | 'lost'
   loot: number
+  heroIds?: string[]
+  share?: number
 }
 interface VillageFoundedData {
   name: string
@@ -62,20 +64,23 @@ export const rankingProjection: Projection = {
       }
 
       case 'GameEnded': {
-        // Le résultat est attribué aux joueurs de l'expédition, compagnons exclus.
+        // Le résultat est attribué aux joueurs de l'expédition, le butin étant partagé équitablement
+        // entre tous les participants (joueurs et mercenaires bots).
         const data = event.data as unknown as GameEndedData
         const gameId = idFrom(event, GAME_CHANNEL_PREFIX)
         const rows = await tx.select().from(gamePlayers).where(eq(gamePlayers.gameId, gameId))
         const ids = rows.map((row) => row.playerId)
         if (ids.length > 0) {
           const won = data.result === 'won'
+          const totalParticipants = data.heroIds?.length || ids.length || 1
+          const playerLoot = won ? (data.share ?? Math.floor(data.loot / totalParticipants)) : 0
           await tx
             .update(players)
             .set({
               gamesPlayed: sql`${players.gamesPlayed} + 1`,
               gamesWon: sql`${players.gamesWon} + ${won ? 1 : 0}`,
-              gold: sql`${players.gold} + ${won ? data.loot : 0}`,
-              bestLoot: sql`greatest(${players.bestLoot}, ${won ? data.loot : 0})`,
+              gold: sql`${players.gold} + ${playerLoot}`,
+              bestLoot: sql`greatest(${players.bestLoot}, ${playerLoot})`,
             })
             .where(inArray(players.playerId, ids))
         }

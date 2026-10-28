@@ -124,7 +124,7 @@ describe('Niveaux de difficulté et compagnons', () => {
     expect(view.heroes.map((hero) => [hero.name, hero.companion])).toEqual([
       ['alice', false],
       ['bob', false],
-      ['Compagnon 1', true],
+      ['Mercenaire 1 (bot)', true],
     ])
   })
 })

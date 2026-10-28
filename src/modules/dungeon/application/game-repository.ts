@@ -1,3 +1,4 @@
+import type { NewMessage } from '@/platform/outbox/outbox'
 import type { GameEvent, GameState } from '../domain/game'
 
 /**
@@ -9,8 +10,17 @@ export interface GameRepository {
   load(gameId: string): Promise<{ state: GameState; version: number }>
 
   /**
-   * Enregistre de nouveaux événements à la suite des précédents.
+   * Enregistre de nouveaux événements à la suite des précédents, accompagnés le cas échéant
+   * de messages pour la boîte d'envoi (versement du butin au Village).
    * Une ConcurrencyError est levée si d'autres événements ont été enregistrés depuis la lecture.
    */
-  save(gameId: string, expectedVersion: number, events: GameEvent[]): Promise<void>
+  save(
+    gameId: string,
+    expectedVersion: number,
+    events: GameEvent[],
+    messages?: NewMessage[],
+  ): Promise<void>
+
+  /** Indique si un joueur a déjà fondé un village. */
+  hasVillage?(playerId: string): Promise<boolean>
 }

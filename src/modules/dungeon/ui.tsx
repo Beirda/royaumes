@@ -286,7 +286,7 @@ export function DungeonGame({ gameId, userId }: { gameId: string; userId: string
           )}
           {view.isHost && view.heroes.length < MAX_HEROES && (
             <button type="button" onClick={addCompanion}>
-              <Entity kind="companion" /> Ajouter un compagnon
+              <Entity kind="companion" /> Engager un mercenaire (bot)
             </button>
           )}
           {view.isHost && (
@@ -389,6 +389,25 @@ export function DungeonGame({ gameId, userId }: { gameId: string; userId: string
           <p>
             Butin de l'expédition : <Entity kind="gold" /> {view.loot}
           </p>
+          {view.phase === 'won' && (
+            <p>
+              {view.heroes.length > 1 ? (
+                <>
+                  Partagé équitablement entre les {view.heroes.length} participants (
+                  {view.heroes.filter((h) => !h.companion).length} joueur(s) et{' '}
+                  {view.heroes.filter((h) => h.companion).length} mercenaire(s) (bot)) :
+                  <br />
+                  <strong>
+                    Votre récompense récupérée : <Entity kind="gold" /> {view.share}
+                  </strong>
+                </>
+              ) : (
+                <strong>
+                  Votre récompense récupérée : <Entity kind="gold" /> {view.share}
+                </strong>
+              )}
+            </p>
+          )}
           <Link href="/dungeon">Retour au Donjon</Link>
         </div>
       )}

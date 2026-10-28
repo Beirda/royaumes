@@ -33,7 +33,7 @@ const joined = (name: string): NewEvent => ({
 })
 const companion = (n: number): NewEvent => ({
   type: 'CompanionAdded',
-  data: { companionId: `companion-${n}`, name: `Compagnon ${n}`, hero, at: T0 },
+  data: { companionId: `companion-${n}`, name: `Mercenaire ${n} (bot)`, hero, at: T0 },
 })
 const started: NewEvent = { type: 'GameStarted', data: { rooms: [], at: T0 } }
 
