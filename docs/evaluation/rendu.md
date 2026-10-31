@@ -45,8 +45,6 @@ Aucun
 ## Usage de l'IA générative
 
 Outils utilisés, nature de leur contribution pour chaque partie du travail (code, tests, documents), et manière dont les résultats ont été vérifiés :
-- **Code du module Forge** : Conception de l'architecture hexagonale du module (`src/modules/forge/`) assistée par l'agent IA Antigravity, en réutilisant les motifs établis du projet (Decider fonctionnel pur, Saga orchestrée, Outbox transactionnelle, Projection Drizzle).
-- **Tests** : Rédaction des tests unitaires du domaine (couvrant exhaustivement les règles métier 1 à 9 de la fiche de cadrage), tests de la projection, de la saga applicative, tests d'API Hono et tests des droits RGPD.
-- **Documentation** : Rédaction des fiches de cadrage et de rendu, de l'ADR 0010 (fusionnant l'architecture de stockage et la saga), mise à jour des diagrammes C4 et ajout du diagramme de séquence Mermaid dans `docs/architecture.md`, rédaction de la revue de sécurité et mise à jour du bilan technique.
-- **Vérification** : Chaque composant et document a été relu et validé par l'étudiant ; la conformité technique a été vérifiée par l'exécution complète et réussie de `pnpm verify` et `pnpm build`.
-
+- **Code du module Forge** : Utilisation pour la complétion automatique de code, la correction des bugs et la correction de bug, ainsi que pour une refonte de l'interface (pour les autres modulesz aussi).
+- **Tests** : Mis een place des tests.
+- **Documentation** : Mise au propre de la fiche de rendu et de l'ADR 0010.

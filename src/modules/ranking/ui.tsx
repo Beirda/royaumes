@@ -1,4 +1,5 @@
 'use client'
+
 import { hc } from 'hono/client'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { type ChannelEvent, useChannel } from '@/platform/realtime/use-channel'
@@ -16,19 +17,20 @@ const STATUS_LABELS = {
   reconnecting: 'Reconnexion...',
 } as const
 
-/** Délai entre deux relectures, tant que la projection n'a pas atteint l'événement annoncé. */
 const RETRY_MS = 1_000
-
-/** Nombre maximal de relectures pour un même événement annoncé. */
 const MAX_READS = 10
+
+function rankBadge(rank: number) {
+  if (rank === 1) return '🥇 1'
+  if (rank === 2) return '🥈 2'
+  if (rank === 3) return '🥉 3'
+  return `#${rank}`
+}
 
 /** Écran du Classement : les meilleurs joueurs, le joueur connecté étant mis en évidence. */
 export function RankingScreen({ userId }: { userId: string }) {
-  // undefined : chargement en cours.
   const [ranking, setRanking] = useState<Ranking | undefined>(undefined)
 
-  // REQUÊTE : la lecture déclenche, côté serveur, le rattrapage de la projection.
-  // Renvoie la position jusqu'à laquelle le classement reçu est à jour ; 0 en cas d'échec.
   const refresh = useCallback(async () => {
     const res = await client.players.$get()
     if (!res.ok) return 0
@@ -41,17 +43,12 @@ export function RankingScreen({ userId }: { userId: string }) {
     refresh()
   }, [refresh])
 
-  // Position du dernier événement annoncé, et indicateur d'une relecture en cours.
   const wanted = useRef(0)
   const following = useRef(false)
 
-  // TEMPS RÉEL : le canal annonce un événement qui modifie le classement. Le classement est
-  // relu jusqu'à ce que la projection ait atteint la position de cet événement : elle peut
-  // s'être arrêtée, quelques secondes, devant une position manquante.
   const follow = useCallback(
     async (event: ChannelEvent) => {
       wanted.current = Math.max(wanted.current, event.position)
-      // Une relecture est déjà en cours : elle tiendra compte de la nouvelle position.
       if (following.current) return
       following.current = true
       try {
@@ -70,51 +67,133 @@ export function RankingScreen({ userId }: { userId: string }) {
   const entries = ranking?.entries
 
   return (
-    <>
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <h1>
-          <Entity kind="ranking" /> Classement
-        </h1>
+    <main>
+      <div className="row" style={{ justifyContent: 'space-between', marginBottom: '16px' }}>
+        <div>
+          <h1 style={{ margin: 0 }}>
+            <Entity kind="ranking" /> Panthéon des Seigneurs
+          </h1>
+          <p className="muted" style={{ margin: '4px 0 0', fontSize: '0.95rem' }}>
+            Classement d’honneur basé sur les victoires, les richesses et la renommée des royaumes
+          </p>
+        </div>
         <span className="status" data-status={status}>
           {STATUS_LABELS[status]}
         </span>
       </div>
-      <section className="panel" aria-label="Classement des joueurs">
-        {entries?.length === 0 && <p className="muted">Aucun joueur classé pour le moment.</p>}
+
+      <section
+        className="panel"
+        aria-label="Classement des joueurs"
+        style={{
+          padding: '16px',
+          overflowX: 'auto',
+          border: '1px solid color-mix(in srgb, var(--accent) 25%, transparent)',
+        }}
+      >
+        {entries === undefined && <p className="muted">Chargement du classement...</p>}
+        {entries?.length === 0 && (
+          <p className="muted" style={{ padding: '16px 0', textAlign: 'center' }}>
+            Aucun seigneur classé pour le moment. Partez en donjon pour inscrire votre nom dans
+            l’histoire !
+          </p>
+        )}
+
         {entries && entries.length > 0 && (
-          <table className="ranking">
+          <table
+            className="ranking"
+            style={{
+              width: '100%',
+              borderCollapse: 'separate',
+              borderSpacing: '0 4px',
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
             <thead>
-              <tr>
-                <th>Rang</th>
-                <th>Joueur</th>
-                <th>Victoires</th>
-                <th>Expéditions</th>
-                <th>
-                  <Entity kind="gold" />
+              <tr style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>
+                <th style={{ padding: '8px 12px', textAlign: 'left' }}>Rang</th>
+                <th style={{ padding: '8px 12px', textAlign: 'left' }}>Seigneur</th>
+                <th style={{ padding: '8px 12px', textAlign: 'center' }}>Victoires</th>
+                <th style={{ padding: '8px 12px', textAlign: 'center' }}>Expéditions</th>
+                <th style={{ padding: '8px 12px', textAlign: 'right' }}>
+                  <Entity kind="gold" showLabel />
                 </th>
-                <th>Meilleur butin</th>
-                <th>Améliorations</th>
+                <th style={{ padding: '8px 12px', textAlign: 'right' }}>Record butin</th>
+                <th style={{ padding: '8px 12px', textAlign: 'center' }}>Bâtiments</th>
               </tr>
             </thead>
             <tbody>
-              {entries.map((entry) => (
-                <tr
-                  key={entry.playerId}
-                  aria-current={entry.playerId === userId ? 'true' : undefined}
-                >
-                  <td>{entry.rank}</td>
-                  <td>{entry.label}</td>
-                  <td>{entry.gamesWon}</td>
-                  <td>{entry.gamesPlayed}</td>
-                  <td>{entry.gold}</td>
-                  <td>{entry.bestLoot}</td>
-                  <td>{entry.upgrades}</td>
-                </tr>
-              ))}
+              {entries.map((entry) => {
+                const isMe = entry.playerId === userId
+                return (
+                  <tr
+                    key={entry.playerId}
+                    style={{
+                      background: isMe
+                        ? 'color-mix(in srgb, var(--accent) 18%, var(--panel))'
+                        : entry.rank <= 3
+                          ? 'color-mix(in srgb, var(--bg) 60%, var(--panel))'
+                          : 'color-mix(in srgb, var(--bg) 35%, var(--panel))',
+                      fontWeight: isMe ? 700 : 500,
+                      outline: isMe
+                        ? '1px solid color-mix(in srgb, var(--accent) 45%, transparent)'
+                        : undefined,
+                      borderRadius: '6px',
+                    }}
+                  >
+                    <td
+                      style={{
+                        padding: '10px 12px',
+                        borderTopLeftRadius: '6px',
+                        borderBottomLeftRadius: '6px',
+                        fontWeight: 700,
+                      }}
+                    >
+                      {rankBadge(entry.rank)}
+                    </td>
+                    <td
+                      style={{ padding: '10px 12px', color: isMe ? 'var(--accent)' : 'var(--ink)' }}
+                    >
+                      {entry.label} {isMe && <span style={{ fontSize: '0.8rem' }}>(Vous)</span>}
+                    </td>
+                    <td style={{ padding: '10px 12px', textAlign: 'center', color: 'var(--ok)' }}>
+                      🏆 {entry.gamesWon}
+                    </td>
+                    <td
+                      style={{ padding: '10px 12px', textAlign: 'center', color: 'var(--muted)' }}
+                    >
+                      {entry.gamesPlayed}
+                    </td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600 }}>
+                      {entry.gold}
+                    </td>
+                    <td
+                      style={{
+                        padding: '10px 12px',
+                        textAlign: 'right',
+                        color: entry.bestLoot > 0 ? 'var(--accent)' : 'var(--muted)',
+                      }}
+                    >
+                      {entry.bestLoot}
+                    </td>
+                    <td
+                      style={{
+                        padding: '10px 12px',
+                        textAlign: 'center',
+                        borderTopRightRadius: '6px',
+                        borderBottomRightRadius: '6px',
+                        color: 'var(--muted)',
+                      }}
+                    >
+                      🏛️ {entry.upgrades}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         )}
       </section>
-    </>
+    </main>
   )
 }

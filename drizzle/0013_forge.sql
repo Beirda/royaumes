@@ -9,8 +9,7 @@ CREATE TABLE "forge"."crafts" (
 	"cost" jsonb NOT NULL,
 	"started_at" bigint NOT NULL,
 	"ready_at" bigint NOT NULL,
-	"completed_at" bigint,
-	"raids_used" bigint DEFAULT 0 NOT NULL
+	"completed_at" bigint
 );
 --> statement-breakpoint
 CREATE INDEX "crafts_player_idx" ON "forge"."crafts" USING btree ("player_id");

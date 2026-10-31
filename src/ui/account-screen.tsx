@@ -1,4 +1,5 @@
 'use client'
+
 import { useState } from 'react'
 
 /** Phrase que le joueur doit saisir pour confirmer la suppression de son compte. */
@@ -13,64 +14,102 @@ export function AccountScreen() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Droit d'accès et à la portabilité : le navigateur télécharge le fichier JSON,
-  // grâce à l'en-tête Content-Disposition renvoyé par l'API.
   const exportUrl = '/api/account/export'
 
-  // Droit à l'effacement. La suppression est irréversible : elle n'est envoyée qu'après
-  // la saisie de la phrase de confirmation.
   async function erase() {
     setBusy(true)
     const res = await fetch('/api/account', { method: 'DELETE' })
     if (res.ok) {
-      // Le compte et ses sessions n'existent plus : retour à la page de connexion.
       window.location.href = '/login'
     } else {
       setBusy(false)
-      setError("La suppression n'a pas abouti. Vous pouvez la relancer.")
+      setError('La suppression n’a pas abouti. Vous pouvez la relancer.')
     }
   }
 
   return (
-    <>
-      <h1>Mes données</h1>
-
-      <section className="panel" aria-label="Exporter mes données">
-        <h2>Exporter mes données</h2>
-        <p>
-          Téléchargez, au format JSON, l'ensemble des données que le jeu conserve à votre sujet :
-          compte, village, expéditions, offres, messages et classement.
+    <main>
+      <div style={{ marginBottom: '16px' }}>
+        <h1 style={{ margin: 0 }}>🛡️ Confidentialité & Données personnelles</h1>
+        <p className="muted" style={{ margin: '4px 0 0', fontSize: '0.95rem' }}>
+          Gérez vos données personnelles conformément au RGPD (droit d’accès, portabilité et oubli)
         </p>
-        <a className="button" href={exportUrl} download>
-          Télécharger mes données
+      </div>
+
+      <section
+        className="panel"
+        aria-label="Exporter mes données"
+        style={{
+          border: '1px solid color-mix(in srgb, var(--accent) 25%, transparent)',
+          marginBottom: '16px',
+        }}
+      >
+        <h2 style={{ margin: '0 0 8px 0', fontSize: '1.15rem' }}>📦 Exporter mes données</h2>
+        <p className="muted" style={{ margin: '0 0 16px 0', fontSize: '0.9rem' }}>
+          Téléchargez, au format JSON, l’ensemble des données que le jeu conserve à votre sujet :
+          compte, village, équipements de forge, expéditions, offres du marché, messages et
+          classement.
+        </p>
+        <a
+          className="button"
+          href={exportUrl}
+          download
+          style={{ fontWeight: 600, padding: '10px 18px' }}
+        >
+          Télécharger l’archive JSON
         </a>
       </section>
 
-      <section className="panel" aria-label="Supprimer mon compte">
-        <h2>Supprimer mon compte</h2>
-        <p>
+      <section
+        className="panel"
+        aria-label="Supprimer mon compte"
+        style={{
+          border: '1px solid color-mix(in srgb, var(--warn) 30%, transparent)',
+          background: 'color-mix(in srgb, var(--warn) 4%, var(--panel))',
+        }}
+      >
+        <h2 style={{ margin: '0 0 8px 0', fontSize: '1.15rem', color: 'var(--warn)' }}>
+          ⚠️ Supprimer définitivement mon compte
+        </h2>
+        <p className="muted" style={{ margin: '0 0 16px 0', fontSize: '0.9rem' }}>
           Votre compte, vos messages et votre présence dans la Taverne sont supprimés. Votre nom et
-          celui de votre village sont remplacés partout ailleurs par une mention neutre. Cette
-          opération est irréversible.
+          celui de votre village sont anonymisés partout ailleurs. Cette opération est irréversible.
         </p>
-        <div className="row">
-          <label htmlFor="confirmation">Saisissez {CONFIRMATION} pour confirmer</label>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px' }}>
+          <label htmlFor="confirmation" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
+            Saisissez <code style={{ color: 'var(--warn)' }}>{CONFIRMATION}</code> pour confirmer :
+          </label>
           <input
             id="confirmation"
             value={confirmation}
             onChange={(e) => setConfirmation(e.target.value)}
             autoComplete="off"
+            style={{
+              padding: '6px 10px',
+              borderRadius: '6px',
+              border: '1px solid color-mix(in srgb, var(--warn) 40%, transparent)',
+            }}
           />
-          <button type="button" disabled={busy || confirmation !== CONFIRMATION} onClick={erase}>
-            Supprimer mon compte
+          <button
+            type="button"
+            disabled={busy || confirmation !== CONFIRMATION}
+            onClick={erase}
+            style={{
+              background: 'var(--warn)',
+              color: 'white',
+              fontWeight: 600,
+              padding: '8px 16px',
+            }}
+          >
+            {busy ? 'Suppression en cours...' : 'Supprimer mon compte'}
           </button>
         </div>
         {error && (
-          <p className="error" role="status">
+          <p className="error" role="status" style={{ margin: '10px 0 0 0' }}>
             {error}
           </p>
         )}
       </section>
-    </>
+    </main>
   )
 }

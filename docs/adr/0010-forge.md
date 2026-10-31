@@ -53,4 +53,4 @@ Si le nombre de fabrications explose, nous pourrons archiver les confections tr�
 
 ## Usage de l'IA générative
 
-Utilisation pour la complétion automatique et mise en forme doc.
+Utilisation pour la complétion automatique de code, la correction des bugs et mise en forme de la doc.

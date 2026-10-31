@@ -47,9 +47,12 @@ export function ForgeScreen() {
       if (res.ok) {
         const overview = await res.json()
         setData(overview)
+        setError(null)
+      } else {
+        setError('Impossible de charger les données de la Forge.')
       }
     } catch {
-      // Erreur réseau temporaire ignorée en arrière-plan
+      setError('Erreur de connexion à la Forge.')
     }
   }, [])
 
@@ -121,43 +124,102 @@ export function ForgeScreen() {
     }
   }
 
+  // Filtrage des équipements actifs : les objets complètement épuisés disparaissent
+  const activeInventory = (data?.inventory ?? []).filter((item: ForgeCraftSummary) => {
+    const recipe = data?.recipes.find((r) => r.id === item.recipeId)
+    const hasCombat = Boolean(recipe?.effect.attack || recipe?.effect.defense || recipe?.effect.hp)
+    const hasProduction = Boolean(recipe?.effect.production)
+
+    const combatExpired = hasCombat ? item.raidsRemaining <= 0 : true
+    const toolExpired = hasProduction
+      ? item.expiresAt !== null
+        ? now > item.expiresAt
+        : false
+      : true
+
+    return !(combatExpired && toolExpired)
+  })
+
   return (
-    <main className="container">
-      <header className="page-header">
-        <h1>
-          <Entity kind="forge" /> La Forge
-        </h1>
-        <p className="status" aria-live="polite">
+    <main>
+      {/* En-tête */}
+      <div className="row" style={{ justifyContent: 'space-between', marginBottom: '16px' }}>
+        <div>
+          <h1>
+            <Entity kind="forge" /> La Forge
+          </h1>
+          <p className="muted" style={{ margin: '4px 0 0', fontSize: '0.95rem' }}>
+            Atelier de métallurgie & confection d’équipements pour le Donjon et le Village
+          </p>
+        </div>
+        <span className="status" data-status={status}>
           {STATUS_LABELS[status]}
-        </p>
-      </header>
+        </span>
+      </div>
 
       {error && (
-        <div className="alert alert-error" role="alert">
+        <div
+          style={{
+            padding: '10px 14px',
+            borderRadius: 'var(--radius, 8px)',
+            background: 'color-mix(in srgb, var(--warn) 15%, var(--panel))',
+            color: 'var(--warn)',
+            border: '1px solid color-mix(in srgb, var(--warn) 30%, transparent)',
+            marginBottom: '16px',
+          }}
+          role="alert"
+        >
           {error}
         </div>
       )}
 
-      {/* Profil de combat et statistiques du héros */}
+      {!data && !error && (
+        <p className="muted" style={{ margin: '2rem 0' }}>
+          Chargement de l’atelier de la Forge...
+        </p>
+      )}
+
+      {/* Profil de combat et caractéristiques du héros */}
       {data?.stats && (
         <section
-          className="card"
+          className="panel"
           style={{
-            marginBottom: '2rem',
-            background: 'linear-gradient(to bottom right, #fbfbfb, #f3f4f6)',
-            border: '2px solid var(--border-color, #d1d5db)',
+            border: '1px solid color-mix(in srgb, var(--accent) 25%, transparent)',
+            marginBottom: '16px',
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h2>⚔️ Caractéristiques du Héros</h2>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '8px',
+              marginBottom: '10px',
+            }}
+          >
+            <h2
+              style={{
+                margin: 0,
+                fontSize: '1.2rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+              }}
+            >
+              ⚔️ Caractéristiques du Héros
+            </h2>
             <span
               style={{
-                fontSize: '0.9rem',
-                fontWeight: 'bold',
-                padding: '0.25rem 0.75rem',
-                borderRadius: '16px',
-                background: data.stats.itemsCount > 0 ? '#dcfce7' : '#f3f4f6',
-                color: data.stats.itemsCount > 0 ? '#166534' : '#6b7280',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                padding: '3px 10px',
+                borderRadius: '20px',
+                background:
+                  data.stats.itemsCount > 0
+                    ? 'color-mix(in srgb, var(--ok) 18%, var(--panel))'
+                    : 'color-mix(in srgb, var(--muted) 15%, var(--panel))',
+                color: data.stats.itemsCount > 0 ? 'var(--ok)' : 'var(--muted)',
                 border: '1px solid currentColor',
               }}
             >
@@ -165,7 +227,7 @@ export function ForgeScreen() {
               {data.stats.itemsCount > 1 ? 's' : ''}
             </span>
           </div>
-          <p className="muted" style={{ margin: '0.25rem 0 1.25rem 0' }}>
+          <p className="muted" style={{ margin: '0 0 16px 0', fontSize: '0.85rem' }}>
             Vos équipements forgés renforcent directement vos dégâts, votre défense et votre
             vitalité dans les expéditions du Donjon.
           </p>
@@ -173,104 +235,128 @@ export function ForgeScreen() {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-              gap: '1rem',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+              gap: '12px',
             }}
           >
-            {/* Dégâts / Attaque */}
+            {/* Attaque */}
             <div
               style={{
-                padding: '1rem',
+                padding: '12px',
                 borderRadius: '8px',
-                background: '#fff',
-                border: '1px solid #e5e7eb',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                background: 'color-mix(in srgb, var(--bg) 60%, var(--panel))',
+                border: '1px solid color-mix(in srgb, var(--muted) 20%, transparent)',
               }}
             >
-              <div style={{ fontSize: '0.85rem', color: '#6b7280', fontWeight: 'bold' }}>
-                ⚔️ ATTAQUE / DÉGÂTS
+              <div
+                style={{
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  color: 'var(--muted)',
+                  letterSpacing: '0.5px',
+                }}
+              >
+                ⚔️ ATTAQUE
               </div>
               <div
                 style={{
-                  fontSize: '2rem',
-                  fontWeight: 'bold',
-                  color: '#b91c1c',
-                  margin: '0.25rem 0',
+                  fontSize: '1.8rem',
+                  fontWeight: 700,
+                  color: 'var(--ink)',
+                  margin: '4px 0 2px',
                 }}
               >
                 {data.stats.total.attack}{' '}
-                <span style={{ fontSize: '0.9rem', color: '#16a34a' }}>
-                  (+{data.stats.bonus.attack})
-                </span>
+                {data.stats.bonus.attack > 0 && (
+                  <span style={{ fontSize: '0.85rem', color: 'var(--ok)', fontWeight: 600 }}>
+                    (+{data.stats.bonus.attack})
+                  </span>
+                )}
               </div>
-              <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>
-                Base : {data.stats.base.attack} • Équipement : +{data.stats.bonus.attack}
+              <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
+                Base : {data.stats.base.attack} • Forge : +{data.stats.bonus.attack}
               </div>
             </div>
 
             {/* Défense */}
             <div
               style={{
-                padding: '1rem',
+                padding: '12px',
                 borderRadius: '8px',
-                background: '#fff',
-                border: '1px solid #e5e7eb',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                background: 'color-mix(in srgb, var(--bg) 60%, var(--panel))',
+                border: '1px solid color-mix(in srgb, var(--muted) 20%, transparent)',
               }}
             >
-              <div style={{ fontSize: '0.85rem', color: '#6b7280', fontWeight: 'bold' }}>
-                🛡️ DÉFENSE DU HÉROS
+              <div
+                style={{
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  color: 'var(--muted)',
+                  letterSpacing: '0.5px',
+                }}
+              >
+                🛡️ DÉFENSE
               </div>
               <div
                 style={{
-                  fontSize: '2rem',
-                  fontWeight: 'bold',
-                  color: '#1d4ed8',
-                  margin: '0.25rem 0',
+                  fontSize: '1.8rem',
+                  fontWeight: 700,
+                  color: 'var(--ink)',
+                  margin: '4px 0 2px',
                 }}
               >
                 {data.stats.total.defense}{' '}
-                <span style={{ fontSize: '0.9rem', color: '#16a34a' }}>
-                  (+{data.stats.bonus.defense})
-                </span>
+                {data.stats.bonus.defense > 0 && (
+                  <span style={{ fontSize: '0.85rem', color: 'var(--ok)', fontWeight: 600 }}>
+                    (+{data.stats.bonus.defense})
+                  </span>
+                )}
               </div>
-              <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>
-                Réduit tous les dégâts subis de {data.stats.total.defense}
+              <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
+                Réduit tous dégâts de {data.stats.total.defense}
               </div>
             </div>
 
-            {/* Points de vie */}
+            {/* PV */}
             <div
               style={{
-                padding: '1rem',
+                padding: '12px',
                 borderRadius: '8px',
-                background: '#fff',
-                border: '1px solid #e5e7eb',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                background: 'color-mix(in srgb, var(--bg) 60%, var(--panel))',
+                border: '1px solid color-mix(in srgb, var(--muted) 20%, transparent)',
               }}
             >
-              <div style={{ fontSize: '0.85rem', color: '#6b7280', fontWeight: 'bold' }}>
-                ❤️ POINTS DE VIE (PV)
+              <div
+                style={{
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  color: 'var(--muted)',
+                  letterSpacing: '0.5px',
+                }}
+              >
+                ❤️ VITALITÉ (PV)
               </div>
               <div
                 style={{
-                  fontSize: '2rem',
-                  fontWeight: 'bold',
-                  color: '#047857',
-                  margin: '0.25rem 0',
+                  fontSize: '1.8rem',
+                  fontWeight: 700,
+                  color: 'var(--ink)',
+                  margin: '4px 0 2px',
                 }}
               >
                 {data.stats.total.hp}{' '}
-                <span style={{ fontSize: '0.9rem', color: '#16a34a' }}>
-                  (+{data.stats.bonus.hp})
-                </span>
+                {data.stats.bonus.hp > 0 && (
+                  <span style={{ fontSize: '0.85rem', color: 'var(--ok)', fontWeight: 600 }}>
+                    (+{data.stats.bonus.hp})
+                  </span>
+                )}
               </div>
-              <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>
-                Base : {data.stats.base.hp} • Équipement : +{data.stats.bonus.hp}
+              <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
+                Base : {data.stats.base.hp} • Forge : +{data.stats.bonus.hp}
               </div>
             </div>
 
-            {/* Rendement du Village (outils de récolte) */}
+            {/* Rendement Village */}
             {Boolean(
               data.stats.productionBonus?.wood ||
                 data.stats.productionBonus?.stone ||
@@ -278,22 +364,28 @@ export function ForgeScreen() {
             ) && (
               <div
                 style={{
-                  padding: '1rem',
+                  padding: '12px',
                   borderRadius: '8px',
-                  background: '#fff',
-                  border: '1px solid #e5e7eb',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                  background: 'color-mix(in srgb, var(--accent) 10%, var(--panel))',
+                  border: '1px solid color-mix(in srgb, var(--accent) 25%, transparent)',
                 }}
               >
-                <div style={{ fontSize: '0.85rem', color: '#6b7280', fontWeight: 'bold' }}>
-                  ⛏️ RENDEMENT DU VILLAGE
+                <div
+                  style={{
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    color: 'var(--accent)',
+                    letterSpacing: '0.5px',
+                  }}
+                >
+                  ⛏️ RENDEMENT VILLAGE
                 </div>
                 <div
                   style={{
-                    fontSize: '1.25rem',
-                    fontWeight: 'bold',
-                    color: '#7c3aed',
-                    margin: '0.25rem 0',
+                    fontSize: '1.15rem',
+                    fontWeight: 700,
+                    color: 'var(--accent)',
+                    margin: '6px 0 2px',
                   }}
                 >
                   {data.stats.productionBonus.wood
@@ -303,10 +395,10 @@ export function ForgeScreen() {
                     ? `+${data.stats.productionBonus.stone} pierre `
                     : ''}
                   {data.stats.productionBonus.gold ? `+${data.stats.productionBonus.gold} or ` : ''}
-                  <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>/ min</span>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 400 }}>/ min</span>
                 </div>
-                <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>
-                  Bonus cumulé de vos outils de forge
+                <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
+                  Actif sur votre domaine
                 </div>
               </div>
             )}
@@ -316,21 +408,29 @@ export function ForgeScreen() {
           {data.stats.specialEffects.length > 0 && (
             <div
               style={{
-                marginTop: '1rem',
-                padding: '0.75rem',
-                background: '#fef3c7',
-                borderRadius: '6px',
+                marginTop: '14px',
+                padding: '10px 14px',
+                background: 'color-mix(in srgb, var(--accent) 12%, var(--panel))',
+                borderRadius: '8px',
+                border: '1px solid color-mix(in srgb, var(--accent) 25%, transparent)',
               }}
             >
-              <strong style={{ fontSize: '0.85rem', color: '#92400e' }}>
+              <strong
+                style={{
+                  fontSize: '0.85rem',
+                  color: 'var(--accent)',
+                  display: 'block',
+                  marginBottom: '4px',
+                }}
+              >
                 ✨ Effets passifs actifs :
               </strong>
               <ul
                 style={{
-                  margin: '0.5rem 0 0 1.25rem',
+                  margin: '0 0 0 18px',
                   padding: 0,
                   fontSize: '0.85rem',
-                  color: '#78350f',
+                  color: 'var(--ink)',
                 }}
               >
                 {data.stats.specialEffects.map((effect) => (
@@ -342,79 +442,32 @@ export function ForgeScreen() {
         </section>
       )}
 
-      {/* Recettes disponibles */}
-      <section className="card" style={{ marginBottom: '2rem' }}>
-        <h2>Catalogue des recettes</h2>
-        <p className="muted">
-          Commandez la confection d’objets en utilisant les ressources produites par votre Village.
-        </p>
-
-        <div className="recipes-grid" style={{ display: 'grid', gap: '1rem', marginTop: '1rem' }}>
-          {data?.recipes.map((recipe: Recipe) => (
-            <article
-              key={recipe.id}
-              style={{
-                border: '1px solid var(--border-color, #ccc)',
-                borderRadius: '8px',
-                padding: '1rem',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-              }}
-            >
-              <div style={{ flex: 1, marginRight: '1rem' }}>
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    marginBottom: '0.25rem',
-                  }}
-                >
-                  <h3 style={{ margin: 0 }}>
-                    <Entity kind={recipe.id} /> {recipe.name}
-                  </h3>
-                  <span
-                    style={{
-                      fontSize: '0.8rem',
-                      fontWeight: 'bold',
-                      padding: '0.15rem 0.5rem',
-                      borderRadius: '4px',
-                      background: '#dcfce7',
-                      color: '#15803d',
-                      border: '1px solid #bbf7d0',
-                    }}
-                  >
-                    {recipe.effect.label}
-                  </span>
-                </div>
-                <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.9rem' }}>{recipe.description}</p>
-                <p style={{ margin: 0, fontSize: '0.85rem' }} className="muted">
-                  Coût : <AmountsText amounts={recipe.cost} /> • Durée : {recipe.durationMs / 1000}s
-                </p>
-              </div>
-
-              <button
-                type="button"
-                className="button primary"
-                disabled={loading}
-                onClick={() => handleCraft(recipe.id)}
-              >
-                Fabriquer
-              </button>
-            </article>
-          ))}
+      {/* Atelier de confection */}
+      <section className="panel" style={{ marginBottom: '16px' }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '8px',
+          }}
+        >
+          <h2 style={{ margin: 0, fontSize: '1.2rem' }}>🔨 Atelier de confection</h2>
+          {data?.crafts && data.crafts.length > 0 && (
+            <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>
+              {data.crafts.length} en cours
+            </span>
+          )}
         </div>
-      </section>
-
-      {/* Confections en cours */}
-      <section className="card" style={{ marginBottom: '2rem' }}>
-        <h2>Atelier de confection</h2>
-        {data?.crafts.length === 0 ? (
-          <p className="muted">Aucune confection en cours. Choisissez une recette ci-dessus.</p>
+        {!data || data.crafts.length === 0 ? (
+          <p className="muted" style={{ margin: '8px 0' }}>
+            Aucune confection en cours. Choisissez une recette ci-dessous pour lancer la forge.
+          </p>
         ) : (
-          <ul style={{ listStyle: 'none', padding: 0, margin: '1rem 0' }}>
-            {data?.crafts.map((craft: ForgeCraftSummary) => {
+          <ul
+            style={{ listStyle: 'none', padding: 0, margin: '8px 0', display: 'grid', gap: '8px' }}
+          >
+            {data.crafts.map((craft: ForgeCraftSummary) => {
               const remainingMs = Math.max(0, craft.readyAt - now)
               const isReady =
                 craft.isReady || (craft.status === 'in_progress' && now >= craft.readyAt)
@@ -422,31 +475,51 @@ export function ForgeScreen() {
                 <li
                   key={craft.craftId}
                   style={{
-                    borderBottom: '1px solid var(--border-color, #eee)',
-                    padding: '0.75rem 0',
+                    padding: '12px',
+                    borderRadius: '8px',
+                    background: 'color-mix(in srgb, var(--bg) 50%, var(--panel))',
+                    border: '1px solid color-mix(in srgb, var(--muted) 20%, transparent)',
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: '8px',
                   }}
                 >
                   <div>
-                    <strong>
+                    <div
+                      style={{
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                      }}
+                    >
                       <Entity kind={craft.recipeId} /> {craft.recipeName}
-                    </strong>
-                    <div style={{ fontSize: '0.85rem' }} className="muted">
-                      {craft.status === 'reserving' && 'Réservation des ressources au Village...'}
+                    </div>
+                    <div style={{ fontSize: '0.85rem', marginTop: '2px' }} className="muted">
+                      {craft.status === 'reserving' &&
+                        '⏳ Réservation des ressources au Village...'}
                       {craft.status === 'in_progress' &&
                         !isReady &&
-                        `En cours de forge (${Math.ceil(remainingMs / 1000)}s restantes)`}
-                      {isReady && '✅ Forgé et prêt à être récupéré !'}
+                        `🔥 En cours de forge (${Math.ceil(remainingMs / 1000)}s restantes)`}
+                      {isReady && (
+                        <span style={{ color: 'var(--ok)', fontWeight: 600 }}>
+                          ✅ Forgé et prêt à être récupéré !
+                        </span>
+                      )}
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', gap: '8px' }}>
                     {isReady ? (
                       <button
                         type="button"
-                        className="button success"
+                        style={{
+                          background: 'var(--ok)',
+                          fontWeight: 600,
+                          padding: '8px 16px',
+                        }}
                         disabled={loading}
                         onClick={() => handleClaim(craft.craftId)}
                       >
@@ -455,11 +528,11 @@ export function ForgeScreen() {
                     ) : (
                       <button
                         type="button"
-                        className="button link"
+                        className="link"
                         disabled={loading}
                         onClick={() => handleCancel(craft.craftId)}
                       >
-                        Annuler (rembourser)
+                        Annuler & rembourser
                       </button>
                     )}
                   </div>
@@ -470,104 +543,256 @@ export function ForgeScreen() {
         )}
       </section>
 
-      {/* Inventaire des objets forgés */}
-      <section className="card">
-        <h2>Inventaire des équipements</h2>
-        {data?.inventory.length === 0 ? (
-          <p className="muted">Votre inventaire est vide pour le moment.</p>
+      {/* Inventaire des équipements actifs */}
+      <section className="panel" style={{ marginBottom: '16px' }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '8px',
+          }}
+        >
+          <h2 style={{ margin: 0, fontSize: '1.2rem' }}>🎒 Inventaire actif</h2>
+          <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>
+            {activeInventory.length} objet{activeInventory.length > 1 ? 's' : ''} actif
+            {activeInventory.length > 1 ? 's' : ''}
+          </span>
+        </div>
+
+        {activeInventory.length === 0 ? (
+          <p className="muted" style={{ margin: '8px 0', padding: '12px 0' }}>
+            Votre inventaire est vide pour le moment. Dès qu’un outil ou équipement est complètement
+            épuisé (raids et durée de récolte), il disparaît automatiquement.
+          </p>
         ) : (
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
-              gap: '1rem',
-              marginTop: '1rem',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+              gap: '12px',
+              marginTop: '12px',
             }}
           >
-            {data?.inventory.map((item: ForgeCraftSummary) => {
+            {activeInventory.map((item: ForgeCraftSummary) => {
               const recipe = data?.recipes.find((r) => r.id === item.recipeId)
+              const hasCombat = Boolean(
+                recipe?.effect.attack || recipe?.effect.defense || recipe?.effect.hp,
+              )
+              const hasProduction = Boolean(recipe?.effect.production)
+
               return (
                 <div
                   key={item.craftId}
                   style={{
-                    border: '1px solid var(--border-color, #ddd)',
                     borderRadius: '8px',
-                    padding: '1rem',
+                    padding: '14px',
                     textAlign: 'center',
-                    background: '#fff',
+                    background: 'color-mix(in srgb, var(--bg) 40%, var(--panel))',
+                    border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
+                    boxShadow: '0 1px 3px rgb(0 0 0 / 0.05)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
                   }}
                 >
-                  <div style={{ fontSize: '2rem', marginBottom: '0.25rem' }}>
-                    <Entity kind={item.recipeId} />
-                  </div>
-                  <strong>{item.recipeName}</strong>
-                  {recipe?.effect && (
+                  <div>
                     <div
                       style={{
-                        fontSize: '0.75rem',
-                        fontWeight: 'bold',
-                        color: item.isExpired ? '#9ca3af' : '#15803d',
-                        marginTop: '0.25rem',
+                        fontSize: '2rem',
+                        width: '48px',
+                        height: '48px',
+                        borderRadius: '50%',
+                        background: 'color-mix(in srgb, var(--accent) 15%, var(--panel))',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        margin: '0 auto 8px',
                       }}
                     >
-                      {recipe.effect.label}
+                      <Entity kind={item.recipeId} />
                     </div>
-                  )}
-
-                  {/* Durabilité de combat et/ou Temps de rendement restant */}
-                  <div
-                    style={{
-                      marginTop: '0.5rem',
-                      fontSize: '0.75rem',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '0.25rem',
-                    }}
-                  >
-                    {Boolean(
-                      recipe?.effect.attack || recipe?.effect.defense || recipe?.effect.hp,
-                    ) && (
-                      <div>
-                        {item.raidsRemaining > 0 ? (
-                          <span style={{ color: '#16a34a', fontWeight: 'bold' }}>
-                            ⚔️ {item.raidsRemaining}/2 raid{item.raidsRemaining > 1 ? 's' : ''}{' '}
-                            restant{item.raidsRemaining > 1 ? 's' : ''}
-                          </span>
-                        ) : (
-                          <span style={{ color: '#dc2626', fontWeight: 'bold' }}>
-                            💥 Combat épuisé (2/2 raids faits)
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    {Boolean(recipe?.effect.production) && (
-                      <div>
-                        {item.expiresAt && now > item.expiresAt ? (
-                          <span style={{ color: '#dc2626', fontWeight: 'bold' }}>
-                            ❌ Rendement expiré (15 min)
-                          </span>
-                        ) : (
-                          <span style={{ color: '#2563eb', fontWeight: 'bold' }}>
-                            ⏳ Rendement actif (~
-                            {Math.max(
-                              1,
-                              Math.ceil((item.expiresAt ? item.expiresAt - now : 0) / 60_000),
-                            )}{' '}
-                            min)
-                          </span>
-                        )}
+                    <strong style={{ fontSize: '1rem', color: 'var(--ink)' }}>
+                      {item.recipeName}
+                    </strong>
+                    {recipe?.effect && (
+                      <div
+                        style={{
+                          fontSize: '0.8rem',
+                          fontWeight: 600,
+                          color: 'var(--ok)',
+                          margin: '4px 0 8px',
+                        }}
+                      >
+                        {recipe.effect.label}
                       </div>
                     )}
                   </div>
 
-                  <div style={{ fontSize: '0.75rem', marginTop: '0.25rem' }} className="muted">
-                    Forgé le {new Date(item.completedAt ?? item.readyAt).toLocaleTimeString()}
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '4px',
+                      marginTop: '8px',
+                    }}
+                  >
+                    {hasCombat && item.raidsRemaining > 0 && (
+                      <span
+                        style={{
+                          fontSize: '0.75rem',
+                          fontWeight: 600,
+                          padding: '3px 8px',
+                          borderRadius: '4px',
+                          background: 'color-mix(in srgb, var(--ok) 15%, var(--panel))',
+                          color: 'var(--ok)',
+                          border: '1px solid color-mix(in srgb, var(--ok) 30%, transparent)',
+                        }}
+                      >
+                        ⚔️ {item.raidsRemaining}/2 raid{item.raidsRemaining > 1 ? 's' : ''} restant
+                        {item.raidsRemaining > 1 ? 's' : ''}
+                      </span>
+                    )}
+                    {hasProduction && (!item.expiresAt || now <= item.expiresAt) && (
+                      <span
+                        style={{
+                          fontSize: '0.75rem',
+                          fontWeight: 600,
+                          padding: '3px 8px',
+                          borderRadius: '4px',
+                          background: 'color-mix(in srgb, var(--accent) 15%, var(--panel))',
+                          color: 'var(--accent)',
+                          border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
+                        }}
+                      >
+                        ⏳ Rendement actif (~
+                        {Math.max(
+                          1,
+                          Math.ceil((item.expiresAt ? item.expiresAt - now : 0) / 60_000),
+                        )}{' '}
+                        min)
+                      </span>
+                    )}
+                    <div style={{ fontSize: '0.75rem', marginTop: '4px' }} className="muted">
+                      Forgé le{' '}
+                      {new Date(item.completedAt ?? item.readyAt).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </div>
                   </div>
                 </div>
               )
             })}
           </div>
         )}
+      </section>
+
+      {/* Catalogue des recettes */}
+      <section className="panel">
+        <div style={{ marginBottom: '12px' }}>
+          <h2 style={{ margin: 0, fontSize: '1.2rem' }}>📜 Catalogue des recettes</h2>
+          <p className="muted" style={{ margin: '4px 0 0', fontSize: '0.85rem' }}>
+            Commandez la confection d’équipements grâce aux ressources récoltées par votre Village.
+          </p>
+        </div>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+            gap: '12px',
+          }}
+        >
+          {data?.recipes.map((recipe: Recipe) => (
+            <article
+              key={recipe.id}
+              style={{
+                borderRadius: '8px',
+                padding: '14px',
+                background: 'color-mix(in srgb, var(--bg) 40%, var(--panel))',
+                border: '1px solid color-mix(in srgb, var(--muted) 20%, transparent)',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                gap: '10px',
+              }}
+            >
+              <div>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    gap: '8px',
+                    marginBottom: '6px',
+                  }}
+                >
+                  <h3
+                    style={{
+                      margin: 0,
+                      fontSize: '1rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}
+                  >
+                    <Entity kind={recipe.id} /> {recipe.name}
+                  </h3>
+                  <span
+                    style={{
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      padding: '2px 8px',
+                      borderRadius: '4px',
+                      background: 'color-mix(in srgb, var(--ok) 15%, var(--panel))',
+                      color: 'var(--ok)',
+                      border: '1px solid color-mix(in srgb, var(--ok) 30%, transparent)',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {recipe.effect.label}
+                  </span>
+                </div>
+                <p style={{ margin: '0 0 8px 0', fontSize: '0.85rem', color: 'var(--ink)' }}>
+                  {recipe.description}
+                </p>
+              </div>
+
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  paddingTop: '8px',
+                  borderTop: '1px solid color-mix(in srgb, var(--muted) 15%, transparent)',
+                  gap: '8px',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div style={{ fontSize: '0.8rem' }} className="muted">
+                  <div>
+                    Coût : <AmountsText amounts={recipe.cost} />
+                  </div>
+                  <div>Durée : {recipe.durationMs / 1000}s</div>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => handleCraft(recipe.id)}
+                  style={{
+                    padding: '6px 14px',
+                    fontSize: '0.9rem',
+                    fontWeight: 600,
+                  }}
+                >
+                  Fabriquer
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
       </section>
     </main>
   )

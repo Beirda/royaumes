@@ -1,4 +1,5 @@
 'use client'
+
 import { hc } from 'hono/client'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { RESOURCES, type Resource } from '@/modules/realm/contracts'
@@ -28,10 +29,10 @@ const STATUS_LABELS = {
 /** Libellé de chaque état d'une offre. */
 const OFFER_STATUS: Record<OfferStatus, string> = {
   reserving: 'Réservation en cours',
-  open: 'Ouverte',
+  open: 'Disponible',
   settling: 'Règlement en cours',
   completed: 'Échange conclu',
-  rejected: 'Refusée : stock insuffisant',
+  rejected: 'Refusée (stock insuffisant)',
   withdrawn: 'Retirée',
 }
 
@@ -40,23 +41,21 @@ const ERRORS: Record<OfferError['code'] | 'INVALID_INPUT', string> = {
   INVALID_INPUT: 'Saisie invalide.',
   OFFER_NOT_FOUND: 'Offre introuvable.',
   ALREADY_EXISTS: 'Offre déjà publiée.',
-  NOT_OPEN: "L'offre n'est plus disponible.",
+  NOT_OPEN: 'L’offre n’est plus disponible.',
   OWN_OFFER: 'Vous ne pouvez pas accepter votre propre offre.',
   NOT_SELLER: 'Seul le vendeur peut retirer son offre.',
-  EXPIRED: "L'offre a expiré.",
-  NOT_EXPIRED: "L'offre n'a pas expiré.",
+  EXPIRED: 'L’offre a expiré.',
+  NOT_EXPIRED: 'L’offre n’a pas expiré.',
 }
 
-/** Délai entre deux relectures, et nombre maximal de relectures, comme pour le Classement. */
 const RETRY_MS = 1_000
 const MAX_READS = 10
 
-/** Affiche des quantités de ressources : « 60 bois, 30 pierre ». */
 function AmountsText({ amounts }: { amounts: Amounts }) {
   return (
     <>
       {Object.entries(amounts).map(([resource, amount], index) => (
-        <span key={resource}>
+        <span key={resource} style={{ fontWeight: 600 }}>
           {index > 0 && ', '}
           {amount} <Entity kind={resource} />
         </span>
@@ -65,7 +64,6 @@ function AmountsText({ amounts }: { amounts: Amounts }) {
   )
 }
 
-/** Compte rendu d'une commande, à partir de la vue de l'offre renvoyée par l'API. */
 function outcomeOf(view: OfferView): string {
   if (view.missing && view.status === 'open') {
     const missing = Object.entries(view.missing)
@@ -80,7 +78,8 @@ function outcomeOf(view: OfferView): string {
 export function MarketScreen() {
   const [list, setList] = useState<MarketList | undefined>(undefined)
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null)
-  // Formulaire de publication : une ressource cédée et une ressource demandée.
+  const [loading, setLoading] = useState(false)
+
   const [give, setGive] = useState<{ resource: Resource; amount: number }>({
     resource: 'wood',
     amount: 50,
@@ -90,7 +89,6 @@ export function MarketScreen() {
     amount: 25,
   })
 
-  // REQUÊTE : la consultation distribue la boîte d'envoi, puis rattrape la projection.
   const refresh = useCallback(async () => {
     const res = await client.offers.$get()
     if (!res.ok) return 0
@@ -103,69 +101,125 @@ export function MarketScreen() {
     refresh()
   }, [refresh])
 
-  // TEMPS RÉEL : même mécanisme que le Classement (TD8), la liste est relue jusqu'à ce que
-  // la projection ait atteint la position de l'événement annoncé.
   const wanted = useRef(0)
   const following = useRef(false)
-  const status = useChannel(MARKET_CHANNEL, async (event) => {
-    wanted.current = Math.max(wanted.current, event.position)
-    if (following.current) return
-    following.current = true
+
+  const follow = useCallback(
+    async (position: number) => {
+      wanted.current = Math.max(wanted.current, position)
+      if (following.current) return
+      following.current = true
+      try {
+        for (let read = 0; read < MAX_READS; read++) {
+          if ((await refresh()) >= wanted.current) return
+          await new Promise((resolve) => setTimeout(resolve, RETRY_MS))
+        }
+      } finally {
+        following.current = false
+      }
+    },
+    [refresh],
+  )
+
+  const status = useChannel(MARKET_CHANNEL, (event) => follow(event.position))
+
+  async function publish() {
+    setLoading(true)
+    setMessage(null)
     try {
-      for (let read = 0; read < MAX_READS; read++) {
-        if ((await refresh()) >= wanted.current) return
-        await new Promise((resolve) => setTimeout(resolve, RETRY_MS))
+      const res = await client.offers.$post({
+        json: {
+          give: { [give.resource]: give.amount },
+          want: { [want.resource]: want.amount },
+        },
+      })
+      const body = await res.json()
+      if ('error' in body) {
+        setMessage({ text: ERRORS[body.error.code], error: true })
+      } else {
+        setMessage({ text: outcomeOf(body.view), error: false })
+        await refresh()
       }
     } finally {
-      following.current = false
+      setLoading(false)
     }
-  })
-
-  // COMMANDES : chaque réponse contient la vue de l'offre, ou une erreur.
-  async function handle(res: Response) {
-    const body = (await res.json()) as { view: OfferView } | { error: { code: string } }
-    if ('error' in body) {
-      setMessage({ text: ERRORS[body.error.code as keyof typeof ERRORS] ?? 'Erreur.', error: true })
-    } else {
-      setMessage({ text: outcomeOf(body.view), error: body.view.status === 'rejected' })
-    }
-    await refresh()
   }
 
-  const publish = async () =>
-    handle(
-      await client.offers.$post({
-        json: { give: { [give.resource]: give.amount }, want: { [want.resource]: want.amount } },
-      }),
-    )
-  const acceptOffer = async (id: string) =>
-    handle(await client.offers[':id'].accept.$post({ param: { id } }))
-  const withdrawOffer = async (id: string) =>
-    handle(await client.offers[':id'].withdraw.$post({ param: { id } }))
+  async function acceptOffer(offerId: string) {
+    setLoading(true)
+    setMessage(null)
+    try {
+      const res = await client.offers[':id'].accept.$post({ param: { id: offerId } })
+      const body = await res.json()
+      if ('error' in body) {
+        setMessage({ text: ERRORS[body.error.code], error: true })
+      } else {
+        setMessage({ text: outcomeOf(body.view), error: false })
+        await refresh()
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function withdrawOffer(offerId: string) {
+    setLoading(true)
+    setMessage(null)
+    try {
+      const res = await client.offers[':id'].withdraw.$post({ param: { id: offerId } })
+      const body = await res.json()
+      if ('error' in body) {
+        setMessage({ text: ERRORS[body.error.code], error: true })
+      } else {
+        setMessage({ text: outcomeOf(body.view), error: false })
+        await refresh()
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const mine = list?.offers.filter((offer) => offer.mine) ?? []
-  const others = list?.offers.filter((offer) => !offer.mine) ?? []
+  const others = list?.offers.filter((offer) => !offer.mine && offer.status === 'open') ?? []
 
-  /** Sélecteur d'une ressource et de sa quantité. */
   const picker = (
     label: string,
     value: { resource: Resource; amount: number },
     onChange: (value: { resource: Resource; amount: number }) => void,
   ) => (
-    <>
-      <label htmlFor={`${label}-amount`}>{label}</label>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+      <label htmlFor={`${label}-amount`} style={{ fontWeight: 600, fontSize: '0.9rem' }}>
+        {label} :
+      </label>
       <input
         id={`${label}-amount`}
         className="amount"
         type="number"
         min={1}
         value={value.amount}
-        onChange={(e) => onChange({ ...value, amount: Number(e.target.value) })}
+        onChange={(e) => onChange({ ...value, amount: Math.max(1, Number(e.target.value)) })}
+        style={{
+          width: '5.5em',
+          padding: '6px 8px',
+          borderRadius: '6px',
+          border: '1px solid color-mix(in srgb, var(--muted) 40%, transparent)',
+          background: 'var(--panel)',
+          color: 'var(--ink)',
+          font: 'inherit',
+        }}
       />
       <select
         aria-label={`Ressource : ${label}`}
         value={value.resource}
         onChange={(e) => onChange({ ...value, resource: e.target.value as Resource })}
+        style={{
+          padding: '6px 10px',
+          borderRadius: '6px',
+          border: '1px solid color-mix(in srgb, var(--muted) 40%, transparent)',
+          background: 'var(--panel)',
+          color: 'var(--ink)',
+          font: 'inherit',
+        }}
       >
         {RESOURCES.map((resource) => (
           <option key={resource} value={resource}>
@@ -173,70 +227,191 @@ export function MarketScreen() {
           </option>
         ))}
       </select>
-    </>
+    </div>
   )
 
   return (
-    <>
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <h1>
-          <Entity kind="market" /> Marché
-        </h1>
+    <main>
+      <div className="row" style={{ justifyContent: 'space-between', marginBottom: '16px' }}>
+        <div>
+          <h1 style={{ margin: 0 }}>
+            <Entity kind="market" /> Comptoir du Marché
+          </h1>
+          <p className="muted" style={{ margin: '4px 0 0', fontSize: '0.95rem' }}>
+            Négociez des surplus de ressources avec les autres seigneurs du royaume
+          </p>
+        </div>
         <span className="status" data-status={status}>
           {STATUS_LABELS[status]}
         </span>
       </div>
 
-      <div className="panel row">
-        {picker('Je cède', give, setGive)}
-        {picker('contre', want, setWant)}
-        <button type="button" onClick={publish}>
-          Publier l'offre
-        </button>
-      </div>
+      {/* Publier une offre */}
+      <section
+        className="panel"
+        style={{
+          border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
+          marginBottom: '16px',
+        }}
+      >
+        <h2 style={{ margin: '0 0 12px 0', fontSize: '1.15rem' }}>⚖️ Proposer un échange</h2>
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: '14px',
+          }}
+        >
+          {picker('Je cède', give, setGive)}
+          <span style={{ fontSize: '1.2rem', color: 'var(--muted)' }}>➔</span>
+          {picker('Contre', want, setWant)}
+
+          <button
+            type="button"
+            disabled={loading}
+            onClick={publish}
+            style={{ fontWeight: 600, padding: '8px 16px', marginLeft: 'auto' }}
+          >
+            Publier l’offre
+          </button>
+        </div>
+      </section>
+
       {message && (
-        <p className={message.error ? 'error' : 'muted'} role="status">
+        <div
+          style={{
+            padding: '10px 14px',
+            borderRadius: 'var(--radius, 8px)',
+            background: message.error
+              ? 'color-mix(in srgb, var(--warn) 15%, var(--panel))'
+              : 'color-mix(in srgb, var(--ok) 15%, var(--panel))',
+            color: message.error ? 'var(--warn)' : 'var(--ok)',
+            border: message.error
+              ? '1px solid color-mix(in srgb, var(--warn) 30%, transparent)'
+              : '1px solid color-mix(in srgb, var(--ok) 30%, transparent)',
+            marginBottom: '16px',
+            fontWeight: 500,
+          }}
+          role="status"
+        >
           {message.text}
-        </p>
+        </div>
       )}
 
-      <section className="panel" aria-label="Vos offres">
-        <h2>Vos offres</h2>
-        {mine.length === 0 && <p className="muted">Aucune offre en cours.</p>}
-        <ul className="offers">
-          {mine.map((offer) => (
-            <li key={offer.offerId}>
-              <span>
-                <AmountsText amounts={offer.give} /> contre <AmountsText amounts={offer.want} />{' '}
-                <span className="muted">({OFFER_STATUS[offer.status]})</span>
-              </span>
-              {offer.status === 'open' && (
-                <button type="button" onClick={() => withdrawOffer(offer.offerId)}>
-                  Retirer
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
+      {/* Vos offres */}
+      <section className="panel" aria-label="Vos offres" style={{ marginBottom: '16px' }}>
+        <h2 style={{ margin: '0 0 10px 0', fontSize: '1.15rem' }}>📜 Vos offres en cours</h2>
+        {mine.length === 0 ? (
+          <p className="muted" style={{ padding: '8px 0', margin: 0 }}>
+            Vous n’avez aucune offre active sur le marché pour l’instant.
+          </p>
+        ) : (
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: '8px' }}>
+            {mine.map((offer) => (
+              <li
+                key={offer.offerId}
+                style={{
+                  padding: '12px 16px',
+                  borderRadius: '8px',
+                  background: 'color-mix(in srgb, var(--bg) 45%, var(--panel))',
+                  border: '1px solid color-mix(in srgb, var(--muted) 20%, transparent)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '8px',
+                }}
+              >
+                <div>
+                  <AmountsText amounts={offer.give} />{' '}
+                  <span style={{ color: 'var(--muted)', margin: '0 6px' }}>contre</span>{' '}
+                  <AmountsText amounts={offer.want} />
+                  <span
+                    style={{
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      marginLeft: '10px',
+                      background:
+                        offer.status === 'open'
+                          ? 'color-mix(in srgb, var(--ok) 15%, var(--panel))'
+                          : 'color-mix(in srgb, var(--muted) 15%, var(--panel))',
+                      color: offer.status === 'open' ? 'var(--ok)' : 'var(--muted)',
+                    }}
+                  >
+                    {OFFER_STATUS[offer.status]}
+                  </span>
+                </div>
+
+                {offer.status === 'open' && (
+                  <button
+                    type="button"
+                    className="link"
+                    disabled={loading}
+                    onClick={() => withdrawOffer(offer.offerId)}
+                    style={{ fontSize: '0.85rem' }}
+                  >
+                    Retirer l’offre
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
+      {/* Offres des autres joueurs */}
       <section className="panel" aria-label="Offres des autres joueurs">
-        <h2>Offres des autres joueurs</h2>
-        {others.length === 0 && <p className="muted">Aucune offre disponible.</p>}
-        <ul className="offers">
-          {others.map((offer) => (
-            <li key={offer.offerId}>
-              <span>
-                {offer.sellerName} cède <AmountsText amounts={offer.give} /> contre{' '}
-                <AmountsText amounts={offer.want} />
-              </span>
-              <button type="button" onClick={() => acceptOffer(offer.offerId)}>
-                Accepter
-              </button>
-            </li>
-          ))}
-        </ul>
+        <h2 style={{ margin: '0 0 10px 0', fontSize: '1.15rem' }}>🤝 Offres disponibles</h2>
+        {others.length === 0 ? (
+          <p className="muted" style={{ padding: '8px 0', margin: 0 }}>
+            Aucune offre publiée par d’autres joueurs pour le moment.
+          </p>
+        ) : (
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: '8px' }}>
+            {others.map((offer) => (
+              <li
+                key={offer.offerId}
+                style={{
+                  padding: '12px 16px',
+                  borderRadius: '8px',
+                  background: 'color-mix(in srgb, var(--bg) 45%, var(--panel))',
+                  border: '1px solid color-mix(in srgb, var(--muted) 20%, transparent)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '10px',
+                }}
+              >
+                <div>
+                  <strong>{offer.sellerName}</strong>{' '}
+                  <span style={{ color: 'var(--muted)' }}>propose</span>{' '}
+                  <AmountsText amounts={offer.give} />{' '}
+                  <span style={{ color: 'var(--muted)' }}>en échange de</span>{' '}
+                  <AmountsText amounts={offer.want} />
+                </div>
+
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => acceptOffer(offer.offerId)}
+                  style={{
+                    fontWeight: 600,
+                    padding: '8px 14px',
+                    fontSize: '0.9rem',
+                    background: 'var(--ok)',
+                  }}
+                >
+                  Accepter l’échange
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
-    </>
+    </main>
   )
 }
