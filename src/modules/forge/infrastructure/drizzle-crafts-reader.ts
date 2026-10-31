@@ -20,6 +20,7 @@ export function createDrizzleCraftsReader(db: Db, projections: ProjectionRunner)
     async overview(playerId, now): Promise<ForgeOverview> {
       await projections.catchUp(craftsProjection)
 
+      // DETTE TECHNIQUE (DT-013) : La table forge.crafts n'est pas purgée des objets expirés ou commandes anciennes.
       const rows = await db
         .select()
         .from(crafts)

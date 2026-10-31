@@ -114,6 +114,7 @@ export function createDungeonService(
       hero: hero ?? undefined,
     })
     if (result.ok && consumeRaid) {
+      // DETTE TECHNIQUE (DT-014) : La décrémentation de la durabilité se fait via un rappel asynchrone hors de la transaction du Donjon.
       await consumeRaid(player.id)
     }
     return { gameId, result }
@@ -129,6 +130,7 @@ export function createDungeonService(
       hero: hero ?? undefined,
     })
     if (result.ok && consumeRaid) {
+      // DETTE TECHNIQUE (DT-014) : La décrémentation de la durabilité se fait via un rappel asynchrone hors de la transaction du Donjon.
       await consumeRaid(player.id)
     }
     return result
