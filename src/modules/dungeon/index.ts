@@ -10,6 +10,7 @@ import type { ChannelPolicy } from '@/platform/realtime/channel-policy'
 import { createDungeonApi } from './api'
 import { createDungeonService } from './application/dungeon-service'
 import { GAME_CHANNEL_PREFIX } from './contracts'
+import type { HeroSpec } from './domain/game'
 import { createDrizzleOpenGamesReader } from './infrastructure/drizzle-open-games-reader'
 import { createEventStoreGameRepository } from './infrastructure/event-store-game-repository'
 import { createDungeonPersonalData } from './personal-data'
@@ -25,6 +26,10 @@ export interface DungeonModuleDeps {
   clock?: () => number
   /** Déclenche la distribution de la boîte d'envoi après un versement au Village. */
   dispatch?: () => Promise<unknown>
+  /** Fournit les caractéristiques personnalisées du héros (équipements de forge). */
+  loadHeroSpec?: (playerId: string) => Promise<HeroSpec | null | undefined>
+  /** Consomme une charge de raid sur les équipements de combat. */
+  consumeRaid?: (playerId: string) => Promise<void>
 }
 
 /** Fabrique du module : assemble les adaptateurs, le service, l'API et la règle des canaux. */
@@ -34,10 +39,17 @@ export function createDungeonModule({
   projections,
   clock,
   dispatch,
+  loadHeroSpec,
+  consumeRaid,
 }: DungeonModuleDeps) {
   const repo = createEventStoreGameRepository(store)
   const openGames = createDrizzleOpenGamesReader(db, projections)
-  const service = createDungeonService(repo, openGames, { clock, dispatch })
+  const service = createDungeonService(repo, openGames, {
+    clock,
+    dispatch,
+    loadHeroSpec,
+    consumeRaid,
+  })
 
   // Règle d'accès aux canaux des expéditions : seuls les membres d'une expédition
   // peuvent l'écouter. Le canal est discret : il ne transmet aucune donnée d'événement,

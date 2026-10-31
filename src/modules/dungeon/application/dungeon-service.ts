@@ -2,6 +2,7 @@ import { REALM_TOPICS } from '@/modules/realm/contracts'
 import { withOptimisticRetry } from '@/platform/event-store/retry'
 import type { NewMessage } from '@/platform/outbox/outbox'
 import { DEFAULT_DIFFICULTY, type Difficulty, MAX_HEROES } from '../domain/content'
+import type { HeroSpec } from '../domain/game'
 import { decide, type GameCommand, type GameError } from '../domain/rules'
 import { type GameView, toView } from '../domain/view'
 import type { GameRepository } from './game-repository'
@@ -26,6 +27,10 @@ export interface DungeonServiceOptions {
   newSeed?: () => number
   /** Déclenche la distribution de la boîte d'envoi après un versement au Village. */
   dispatch?: () => Promise<unknown>
+  /** Fournit les caractéristiques personnalisées du héros (équipements de forge). */
+  loadHeroSpec?: (playerId: string) => Promise<HeroSpec | null | undefined>
+  /** Consomme une charge de raid sur les équipements de combat du joueur. */
+  consumeRaid?: (playerId: string) => Promise<void>
 }
 
 /**
@@ -41,6 +46,8 @@ export function createDungeonService(
     newId = () => crypto.randomUUID(),
     newSeed = () => crypto.getRandomValues(new Uint32Array(1))[0],
     dispatch,
+    loadHeroSpec,
+    consumeRaid,
   }: DungeonServiceOptions = {},
 ) {
   /**
@@ -96,6 +103,7 @@ export function createDungeonService(
     player: { id: string; name: string },
     difficulty: Difficulty = DEFAULT_DIFFICULTY,
   ) {
+    const hero = loadHeroSpec ? await loadHeroSpec(player.id) : undefined
     const gameId = newId()
     const result = await execute(gameId, player.id, {
       type: 'CreateGame',
@@ -103,8 +111,27 @@ export function createDungeonService(
       name: player.name,
       difficulty,
       seed: newSeed(),
+      hero: hero ?? undefined,
     })
+    if (result.ok && consumeRaid) {
+      await consumeRaid(player.id)
+    }
     return { gameId, result }
+  }
+
+  /** Fait rejoindre une expédition par un joueur en appliquant ses caractéristiques d'équipement. */
+  async function join(gameId: string, player: { id: string; name: string }) {
+    const hero = loadHeroSpec ? await loadHeroSpec(player.id) : undefined
+    const result = await execute(gameId, player.id, {
+      type: 'JoinGame',
+      playerId: player.id,
+      name: player.name,
+      hero: hero ?? undefined,
+    })
+    if (result.ok && consumeRaid) {
+      await consumeRaid(player.id)
+    }
+    return result
   }
 
   /** Vue d'une expédition pour un joueur ; null si elle n'existe pas. */
@@ -118,7 +145,7 @@ export function createDungeonService(
     return openGames.list(clock())
   }
 
-  return { execute, create, getView, listOpenGames }
+  return { execute, create, join, getView, listOpenGames }
 }
 
 /** Type du service, déduit de sa fabrique : utilisé par l'API du module. */

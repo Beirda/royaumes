@@ -31,6 +31,7 @@ export interface Hero {
   hp: number
   maxHp: number
   attack: number
+  defense?: number
   /** Vrai pour un compagnon : aucun joueur ne l'incarne, l'intelligence artificielle décide. */
   companion: boolean
 }
@@ -39,6 +40,7 @@ export interface Hero {
 export interface HeroSpec {
   hp: number
   attack: number
+  defense?: number
 }
 
 export interface Monster {
@@ -209,6 +211,7 @@ const newHero = (id: string, name: string, spec: HeroSpec, companion = false): H
   hp: spec.hp,
   maxHp: spec.hp,
   attack: spec.attack,
+  defense: spec.defense ?? 0,
   companion,
 })
 

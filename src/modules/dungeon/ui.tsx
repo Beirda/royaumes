@@ -265,7 +265,8 @@ export function DungeonGame({ gameId, userId }: { gameId: string; userId: string
               {hero.companion && <span className="muted"> (piloté par l'ordinateur)</span>}
             </span>
             <span className="muted">
-              {hero.hp}/{hero.maxHp} PV
+              {hero.hp}/{hero.maxHp} PV • ⚔️ {hero.attack} ATK
+              {hero.defense > 0 && ` • 🛡️ ${hero.defense} DEF`}
             </span>
             {view.phase === 'combat' && hero.ready && <span className="ok">prêt</span>}
             {view.turnHeroId === hero.id && <span className="ok">à son tour</span>}

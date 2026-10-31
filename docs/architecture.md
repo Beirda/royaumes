@@ -28,7 +28,7 @@ flowchart TB
   subgraph royaumes["Système Royaumes"]
     web["Interface web<br/>[Conteneur : React, dans le navigateur]<br/>Pages du jeu et page de connexion"]
     serveur["Application serveur<br/>[Conteneur : Next.js et Hono, fonctions Vercel, Francfort]<br/>Rendu des pages, API JSON,<br/>authentification, flux temps réel"]
-    base[("Base de données<br/>[Conteneur : PostgreSQL, Neon, Francfort]<br/>Schéma platform : journal, points de reprise,<br/>boîte d'envoi, registre des effacements<br/>Schéma identity : comptes et sessions<br/>Schémas ranking, dungeon et market :<br/>modèles de lecture<br/>Schéma tavern : messages et présence")]
+    base[("Base de données<br/>[Conteneur : PostgreSQL, Neon, Francfort]<br/>Schéma platform : journal, points de reprise,<br/>boîte d'envoi, registre des effacements<br/>Schéma identity : comptes et sessions<br/>Schémas ranking, dungeon, market et forge :<br/>modèles de lecture<br/>Schéma tavern : messages et présence")]
   end
   joueur -->|"Utilise"| web
   web -->|"Pages, appels de l'API avec le cookie de session<br/>(HTTPS, JSON)"| serveur
@@ -42,9 +42,9 @@ flowchart TB
 | Application serveur | Next.js, Hono, Better Auth, Drizzle | Contrôle d'accès, règles du jeu, enregistrement des événements, diffusion des flux |
 | Base de données | PostgreSQL (Neon en production, PGlite en local et en test) | Conservation du journal d'événements, des comptes et des sessions ; modèles de lecture des modules |
 
-Le journal d'événements est la seule source de vérité des modules Village, Donjon et Marché.
+Le journal d'événements est la seule source de vérité des modules Village, Donjon, Marché et Forge.
 La Taverne n'enregistre pas d'événements : ses tables sont sa propre source de vérité (ADR 0008).
-Les tables des schémas `ranking`, `dungeon` et `market` sont des modèles de lecture, dérivés du journal par des projections : elles peuvent
+Les tables des schémas `ranking`, `dungeon`, `market` et `forge` sont des modèles de lecture, dérivés du journal par des projections : elles peuvent
 être vidées puis reconstruites à tout moment, sans perte d'information.
 
 L'interface web ne communique jamais directement avec la base : toute lecture et toute
@@ -66,6 +66,7 @@ flowchart TB
     dungeon["dungeon<br/>Donjon : domaine et IA, service,<br/>dépôt fondé sur le journal, API, canal discret,<br/>projection des expéditions ouvertes"]
     ranking["ranking<br/>Classement : projection,<br/>lecture, API, canal global"]
     market["market<br/>Marché : orchestrateur de la saga,<br/>projection des offres, API, canal global"]
+    forge["forge<br/>Forge : orchestrateur de la saga,<br/>projection des fabrications, API, canal global"]
     tavern["tavern<br/>Taverne : messages et présence<br/>en tables, API, canal à source propre"]
   end
   subgraph platform["src/platform"]
@@ -83,13 +84,14 @@ flowchart TB
   route --> server
   pages --> server
   server --> createapi
-  createapi --> system & realm & dungeon & ranking & market & tavern & auth & http & realtime & projection & outbox & privacy & cron
+  createapi --> system & realm & dungeon & ranking & market & forge & tavern & auth & http & realtime & projection & outbox & privacy & cron
   realm --> store & realtime & http & outbox
   market --> store & projection & realtime & http & outbox
+  forge --> store & projection & realtime & http & outbox
   dungeon --> store & projection & realtime & http
   ranking --> projection & realtime & http
   tavern --> realtime & http & db
-  realm & dungeon & market & ranking & tavern --> privacy
+  realm & dungeon & market & forge & ranking & tavern --> privacy
   privacy --> store
   auth --> privacy
   realtime --> store & http
@@ -117,6 +119,11 @@ La seule dépendance directe porte sur les contrats du Village (`REALM_TOPICS`, 
 qui décrivent ces messages. Chaque transaction ne modifie que les données d'un seul module,
 et la boîte d'envoi (ADR 0007).
 
+Le module `forge` suit le même modèle : il orchestre la fabrication d'objets en échangeant
+des messages asynchrones avec le Village (`realm.withdraw` pour la réservation, et `realm.deposit`
+en cas de compensation lors de l'annulation d'une confection). Chaque transaction est confinée
+à son propre agrégat et à la boîte d'envoi (ADR 0010).
+
 Chaque module déclare ses données personnelles à la brique `privacy`, au moyen d'un fichier
 `personal-data.ts` : il les exporte, désigne les champs personnels de ses événements, et les
 efface de ses tables. La brique `privacy` contient la seule fonction du projet qui modifie un
@@ -140,6 +147,42 @@ de la plateforme ou d'un module, et chaque module qui conserve des données déc
 données personnelles.
 
 Seule la racine de composition connaît à la fois la plateforme et l'ensemble des modules.
+
+## Parcours d'une opération traversant plusieurs modules : Confection à la Forge
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor J as Joueur
+  participant W as Interface Web
+  participant F as Module Forge
+  participant S as Event Store
+  participant O as Boîte d'envoi
+  participant D as Distributeur
+  participant V as Module Village
+
+  J->>W: Commande une épée (POST /api/forge/crafts)
+  W->>F: Requête HTTP avec cookie de session
+  F->>S: Enregistre CraftStarted (statut reserving)
+  F->>O: Enregistre message realm.withdraw (même transaction)
+  F-->>W: Réponse 201 Created
+  F->>D: Déclenche distribution
+  D->>O: Lit message en attente
+  D->>V: Remet message realm.withdraw
+  V->>S: Prélève les ressources du village
+  V->>O: Enregistre réponse forge.transfer-result (withdrawn)
+  D->>F: Remet réponse forge.transfer-result
+  F->>S: Enregistre CraftInProgress
+  opt Annulation par le joueur (étape compensable)
+    J->>W: Clique sur Annuler (POST /api/forge/crafts/:id/cancel)
+    W->>F: Requête HTTP
+    F->>S: Enregistre CraftCancelled
+    F->>O: Enregistre message compensable realm.deposit
+    F->>D: Déclenche distribution
+    D->>V: Remet message realm.deposit
+    V->>S: Restitue les ressources au village
+  end
+```
 
 ## Extraction du Village
 

@@ -106,12 +106,17 @@ export type Decision = { ok: true; events: VillageEvent[] } | { ok: false; error
 // Production
 // ---------------------------------------------------------------------------
 
-/** Production par minute de chaque ressource, pour des niveaux donnés. */
-export function productionPerMinute(levels: Levels): Stock {
+/** Production par minute de chaque ressource, pour des niveaux donnés et d'éventuels bonus. */
+export function productionPerMinute(levels: Levels, bonuses?: Partial<Stock>): Stock {
   const rates: Stock = { wood: 0, stone: 0, gold: 0 }
   for (const building of BUILDINGS) {
     const { produces, perMinute } = CATALOG[building]
     rates[produces] += perMinute * levels[building]
+  }
+  if (bonuses) {
+    for (const [res, bonus] of Object.entries(bonuses)) {
+      if (bonus) rates[res as Resource] += bonus
+    }
   }
   return rates
 }
@@ -121,10 +126,10 @@ export function productionPerMinute(levels: Levels): Stock {
  * puis fait de at le nouvel instant de référence.
  * Un nouvel objet est renvoyé : l'état reçu n'est jamais modifié.
  */
-export function accrue(state: VillageState, at: number): VillageState {
+export function accrue(state: VillageState, at: number, bonuses?: Partial<Stock>): VillageState {
   if (!state.founded || at <= state.asOf) return state
   const minutes = (at - state.asOf) / 60_000
-  const rates = productionPerMinute(state.levels)
+  const rates = productionPerMinute(state.levels, bonuses)
   const stock = { ...state.stock }
   for (const resource of RESOURCES) stock[resource] += rates[resource] * minutes
   return { ...state, stock, asOf: at }
@@ -234,7 +239,12 @@ function missingFor(stock: Stock, cost: Partial<Stock>): Partial<Stock> {
 // decide : vérifie une commande et en déduit les événements
 // ---------------------------------------------------------------------------
 
-export function decide(state: VillageState, command: VillageCommand, now: number): Decision {
+export function decide(
+  state: VillageState,
+  command: VillageCommand,
+  now: number,
+  bonuses?: Partial<Stock>,
+): Decision {
   switch (command.type) {
     case 'FoundVillage':
       if (state.founded) return { ok: false, error: { code: 'ALREADY_FOUNDED' } }
@@ -250,7 +260,7 @@ export function decide(state: VillageState, command: VillageCommand, now: number
         return { ok: false, error: { code: 'MAX_LEVEL_REACHED', building: command.building } }
       }
       // Le stock est évalué à l'instant de la commande, production comprise.
-      const current = accrue(state, now)
+      const current = accrue(state, now, bonuses)
       const cost = upgradeCost(command.building, level)
       const missing = missingFor(current.stock, cost)
       if (Object.keys(missing).length > 0) {
@@ -274,7 +284,7 @@ export function decide(state: VillageState, command: VillageCommand, now: number
       if (command.transferId in state.transfers) return { ok: true, events: [] }
       // Le stock est évalué à l'instant du prélèvement, production comprise. Un village
       // qui n'est pas fondé a un stock nul : le prélèvement y est simplement refusé.
-      const missing = missingFor(accrue(state, now).stock, command.resources)
+      const missing = missingFor(accrue(state, now, bonuses).stock, command.resources)
       const { transferId, resources } = command
       // Un stock insuffisant n'est pas une erreur, mais un refus enregistré comme un fait :
       // il pourra ainsi être répété à l'identique si la commande est reçue une seconde fois.
@@ -320,8 +330,8 @@ export interface VillageView {
   asOf: number
 }
 
-export function toView(state: VillageState, now: number): VillageView {
-  const current = accrue(state, now)
+export function toView(state: VillageState, now: number, bonuses?: Partial<Stock>): VillageView {
+  const current = accrue(state, now, bonuses)
   const nextCosts = {} as Record<Building, Partial<Stock> | null>
   for (const building of BUILDINGS) {
     const level = current.levels[building]
@@ -331,7 +341,7 @@ export function toView(state: VillageState, now: number): VillageView {
     name: current.name,
     stock: current.stock,
     levels: current.levels,
-    ratesPerMinute: productionPerMinute(current.levels),
+    ratesPerMinute: productionPerMinute(current.levels, bonuses),
     nextCosts,
     asOf: now,
   }

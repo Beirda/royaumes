@@ -81,6 +81,7 @@ Un module n'est accessible depuis l'extérieur que par ses entrées publiques : 
 | `ranking` | Classement des joueurs, construit à partir des événements du Village et du Donjon | `/api/ranking` |
 | `market` | Marché : échanges de ressources entre joueurs, par une saga orchestrée | `/api/market` |
 | `tavern` | Taverne : salon de discussion commun et présence des joueurs, sans Event Sourcing | `/api/tavern` |
+| `forge` | Forge : confection d'équipements à partir des ressources du village, par une saga orchestrée | `/api/forge` |
 
 ## Temps réel
 
@@ -89,15 +90,15 @@ Les changements sont diffusés aux navigateurs par des Server-Sent Events, à l'
 la règle du module concerné. Le canal `village-<joueur>` n'est ainsi accessible qu'au
 propriétaire du village, et le canal `dungeon-<expédition>` aux seuls membres de l'expédition.
 
-La plupart des canaux correspondent à un flux du journal d'événements. Les canaux `ranking`
-et `market` sont des canaux globaux : ils suivent, dans tout le journal, les événements qui
-modifient le classement ou la liste des offres, et ne transmettent que ceux qui sont
+La plupart des canaux correspondent à un flux du journal d'événements. Les canaux `ranking`,
+`market` et `forge` sont des canaux globaux : ils suivent, dans tout le journal, les événements qui
+modifient le classement, la liste des offres ou l'état de la forge, et ne transmettent que ceux qui sont
 enregistrés après leur ouverture.
 
 Le canal `tavern` ne lit pas le journal, mais la table des messages de la Taverne : il
 transmet chaque nouveau message, avec son contenu, à tous les joueurs connectés.
 
-Les canaux du Donjon, du Classement et du Marché sont discrets : ils ne transmettent que la position,
+Les canaux du Donjon, du Classement, du Marché et de la Forge sont discrets : ils ne transmettent que la position,
 le type et la version des événements, et chaque navigateur relit sa propre vue, filtrée
 par le serveur.
 
@@ -188,6 +189,7 @@ sans la première ; sans la seconde, la route des tâches quotidiennes reste fer
 - [Revue de sécurité de l'authentification](docs/qualite/revue-securite-authentification.md)
 - [Revue de sécurité du Donjon](docs/qualite/revue-securite-donjon.md)
 - [Revue de sécurité du Marché](docs/qualite/revue-securite-marche.md)
+- [Revue de sécurité de la Forge](docs/qualite/revue-securite-forge.md)
 - [Registre des traitements](docs/rgpd/registre-traitements.md)
 - [Revue de conformité au RGPD](docs/rgpd/revue-conformite.md)
 - [Bilan technique](docs/bilan-technique.md)
@@ -216,6 +218,8 @@ d'une projection a lieu pendant une consultation : sa durée croît avec la tail
 Une offre échue n'est plus proposée ni acceptée, mais ses ressources ne sont restituées au
 vendeur qu'à la consultation suivante du Marché, ou au plus tard lors de la tâche planifiée
 quotidienne.
+
+Une fabrication de la Forge est déclarée prête dès que son délai est écoulé (échéance paresseuse) ; elle n'est enregistrée comme achevée dans les projections qu'à la consultation de la forge ou à la récupération par le joueur.
 
 L'effacement d'un compte parcourt tout le journal d'événements : sa durée croît avec la taille
 du journal. L'identifiant d'un joueur effacé reste dans le journal, sous une forme

@@ -47,9 +47,8 @@ export function createDungeonApi(service: DungeonService) {
       })
 
       .post('/games/:id/join', async (c) => {
-        const result = await service.execute(c.req.param('id'), c.var.userId, {
-          type: 'JoinGame',
-          playerId: c.var.userId,
+        const result = await service.join(c.req.param('id'), {
+          id: c.var.userId,
           name: c.var.userName,
         })
         return result.ok

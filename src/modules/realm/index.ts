@@ -8,6 +8,7 @@ import type { ChannelPolicy } from '@/platform/realtime/channel-policy'
 import { createRealmApi } from './api'
 import { createVillageService } from './application/village-service'
 import { villageChannel } from './contracts'
+import type { Stock } from './domain/catalog'
 import { createEventStoreVillageRepository } from './infrastructure/event-store-village-repository'
 import { createRealmHandlers } from './messages'
 import { createRealmPersonalData } from './personal-data'
@@ -17,15 +18,17 @@ export interface RealmModuleDeps {
   store: EventStore
   /** Horloge de référence ; l'heure réelle par défaut. */
   clock?: () => number
+  /** Fournit les bonus de production conférés par les équipements de forge. */
+  loadProductionBonus?: (userId: string) => Promise<Partial<Stock> | undefined>
 }
 
 /**
  * Fabrique du module : assemble l'adaptateur, le service, l'API, la règle du canal et les
  * gestionnaires de messages, que la racine de composition confie au distributeur.
  */
-export function createRealmModule({ store, clock }: RealmModuleDeps) {
+export function createRealmModule({ store, clock, loadProductionBonus }: RealmModuleDeps) {
   const repo = createEventStoreVillageRepository(store)
-  const service = createVillageService(repo, clock)
+  const service = createVillageService(repo, { clock, loadProductionBonus })
 
   // Règle d'accès au canal temps réel : un joueur n'écoute que son propre village.
   const channelPolicy: ChannelPolicy = {

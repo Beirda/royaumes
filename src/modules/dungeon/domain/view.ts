@@ -11,6 +11,8 @@ export interface HeroView {
   name: string
   hp: number
   maxHp: number
+  attack: number
+  defense: number
   /** Vrai pour un compagnon, piloté par l'intelligence artificielle. */
   companion: boolean
   /** Vrai si le héros a choisi son action ; toujours vrai pour un compagnon, qui n'attend pas. */
@@ -67,6 +69,8 @@ export function toView(state: GameState, viewerId: string, now: number): GameVie
       name: hero.name,
       hp: hero.hp,
       maxHp: hero.maxHp,
+      attack: hero.attack,
+      defense: hero.defense ?? 0,
       companion: hero.companion,
       ready: inCombat && (hero.companion || current.choices[hero.id] !== undefined),
       // Le choix des autres héros n'est jamais transmis avant la résolution de la manche.

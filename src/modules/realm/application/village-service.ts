@@ -1,6 +1,7 @@
 import { withOptimisticRetry } from '@/platform/event-store/retry'
 import type { NewMessage } from '@/platform/outbox/outbox'
 import type { TransferResult } from '../contracts'
+import type { Stock } from '../domain/catalog'
 import {
   type DomainError,
   decide,
@@ -11,6 +12,11 @@ import {
   type VillageView,
 } from '../domain/village'
 import type { VillageRepository } from './village-repository'
+
+export interface VillageServiceOptions {
+  clock?: () => number
+  loadProductionBonus?: (userId: string) => Promise<Partial<Stock> | undefined>
+}
 
 /** Résultat d'une commande : la vue mise à jour, ou l'erreur métier. */
 export type CommandResult = { ok: true; view: VillageView } | { ok: false; error: DomainError }
@@ -31,9 +37,19 @@ function resultOf(event: VillageEvent): TransferResult | null {
 
 /**
  * Service applicatif du Village : orchestre le domaine et la persistance.
- * Il reçoit ses dépendances en paramètre : le port de persistance et l'horloge.
+ * Il reçoit ses dépendances en paramètre : le port de persistance et l'horloge ou les options.
  */
-export function createVillageService(repo: VillageRepository, clock = () => Date.now()) {
+export function createVillageService(
+  repo: VillageRepository,
+  clockOrOptions: (() => number) | VillageServiceOptions = () => Date.now(),
+) {
+  const clock =
+    typeof clockOrOptions === 'function'
+      ? clockOrOptions
+      : (clockOrOptions?.clock ?? (() => Date.now()))
+  const loadProductionBonus =
+    typeof clockOrOptions === 'object' ? clockOrOptions.loadProductionBonus : undefined
+
   /**
    * Traite une commande : charger, décider, enregistrer, puis renvoyer la vue.
    * En cas de conflit d'écriture, l'ensemble du traitement est rejoué sur l'état à jour.
@@ -45,9 +61,10 @@ export function createVillageService(repo: VillageRepository, clock = () => Date
 
       // 2. Lire l'horloge une seule fois : la décision et la vue portent sur le même instant.
       const now = clock()
+      const bonuses = loadProductionBonus ? await loadProductionBonus(userId) : undefined
 
       // 3. Demander la décision au domaine. Un refus est renvoyé tel quel.
-      const decision = decide(state, command, now)
+      const decision = decide(state, command, now, bonuses)
       if (!decision.ok) return decision
 
       // 4. Enregistrer les événements produits, à la suite de la version lue.
@@ -56,7 +73,7 @@ export function createVillageService(repo: VillageRepository, clock = () => Date
 
       // 5. Renvoyer la vue de l'état obtenu.
       const updated = await repo.load(userId)
-      return { ok: true, view: toView(updated.state, now) }
+      return { ok: true, view: toView(updated.state, now, bonuses) }
     })
   }
 
@@ -71,7 +88,8 @@ export function createVillageService(repo: VillageRepository, clock = () => Date
   function transfer(userId: string, command: TransferCommand, replyTo?: string) {
     return withOptimisticRetry(async () => {
       const { state, version } = await repo.load(userId)
-      const decision = decide(state, command, clock())
+      const bonuses = loadProductionBonus ? await loadProductionBonus(userId) : undefined
+      const decision = decide(state, command, clock(), bonuses)
       if (!decision.ok) {
         throw new Error(`Mouvement ${command.transferId} impossible : ${decision.error.code}`)
       }
@@ -87,7 +105,8 @@ export function createVillageService(repo: VillageRepository, clock = () => Date
   /** Renvoie la vue du village d'un joueur, ou null s'il n'en a pas encore fondé. */
   async function getView(userId: string): Promise<VillageView | null> {
     const { state } = await repo.load(userId)
-    return state.founded ? toView(state, clock()) : null
+    const bonuses = loadProductionBonus ? await loadProductionBonus(userId) : undefined
+    return state.founded ? toView(state, clock(), bonuses) : null
   }
 
   return { execute, transfer, getView }

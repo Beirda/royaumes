@@ -31,6 +31,7 @@ import {
   evolve,
   type GameEvent,
   type GameState,
+  type HeroSpec,
   type MonsterSpec,
   type Phase,
   type Room,
@@ -46,8 +47,15 @@ import { mix, pick, type Random, randomInt, seeded } from './random'
 // ---------------------------------------------------------------------------
 
 export type GameCommand =
-  | { type: 'CreateGame'; playerId: string; name: string; difficulty: Difficulty; seed: number }
-  | { type: 'JoinGame'; playerId: string; name: string }
+  | {
+      type: 'CreateGame'
+      playerId: string
+      name: string
+      difficulty: Difficulty
+      seed: number
+      hero?: HeroSpec
+    }
+  | { type: 'JoinGame'; playerId: string; name: string; hero?: HeroSpec }
   | { type: 'AddCompanion'; playerId: string }
   | { type: 'StartGame'; playerId: string }
   | { type: 'OpenDoor'; playerId: string }
@@ -182,13 +190,18 @@ export function resolveRound(state: GameState, at: number): GameEvent[] {
   }
 
   // 3. Les attaques des monstres encore debout, dont la cible est choisie par la stratégie
-  //    du niveau de difficulté. La défense divise les dégâts par deux.
+  //    du niveau de difficulté. L'armure et le bouclier (défense de forge) réduisent les dégâts.
+  //    La posture de défense divise les dégâts résiduels par deux.
   const strategy = MONSTER_STRATEGIES[state.difficulty]
   for (const monster of monsters) {
     const targets = heroes.filter((hero) => hero.hp > 0)
     if (monster.hp <= 0 || targets.length === 0) continue
     const target = strategy({ monster, heroes: targets, actions, random })
     let amount = rollDamage(random, monster.attack, DAMAGE_SPREAD.monster)
+    const heroDefense = target.defense ?? 0
+    if (heroDefense > 0) {
+      amount = Math.max(1, amount - heroDefense)
+    }
     if (actions[target.id]?.type === 'defend') amount = Math.ceil(amount / 2)
     record({ kind: 'damage', source: monster.id, target: target.id, amount })
   }
@@ -275,13 +288,20 @@ const isMember = (state: GameState, playerId: string) =>
 function decideCommand(state: GameState, command: GameCommand, now: number): Decision {
   if (command.type === 'CreateGame') {
     if (state.exists) return fail({ code: 'ALREADY_EXISTS' })
-    const { playerId, name, difficulty, seed } = command
+    const { playerId, name, difficulty, seed, hero } = command
     return {
       ok: true,
       events: [
         {
           type: 'GameCreated',
-          data: { hostId: playerId, hostName: name, hero: { ...HERO }, difficulty, seed, at: now },
+          data: {
+            hostId: playerId,
+            hostName: name,
+            hero: hero ?? { ...HERO },
+            difficulty,
+            seed,
+            at: now,
+          },
         },
       ],
     }
@@ -299,7 +319,12 @@ function decideCommand(state: GameState, command: GameCommand, now: number): Dec
         events: [
           {
             type: 'PlayerJoined',
-            data: { playerId: command.playerId, name: command.name, hero: { ...HERO }, at: now },
+            data: {
+              playerId: command.playerId,
+              name: command.name,
+              hero: command.hero ?? { ...HERO },
+              at: now,
+            },
           },
         ],
       }

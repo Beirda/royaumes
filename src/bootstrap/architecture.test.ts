@@ -36,4 +36,23 @@ describe("Fonctions d'aptitude", () => {
       expect(existsSync(file), `${module} n'a pas de fichier personal-data.ts`).toBe(true)
     }
   })
+
+  it("garantit que chaque recette de la Forge est valide et n'utilise que les ressources du Village avec des coûts strictement positifs (Bonus B8)", async () => {
+    const { RECIPES } = await import('@/modules/forge/contracts')
+    const { RESOURCES } = await import('@/modules/realm/contracts')
+
+    const recipes = Object.values(RECIPES)
+    expect(recipes.length).toBeGreaterThan(0)
+    for (const recipe of recipes) {
+      expect(recipe.durationMs).toBeGreaterThan(0)
+      const costKeys = Object.keys(recipe.cost) as (keyof typeof recipe.cost)[]
+      expect(costKeys.length).toBeGreaterThan(0)
+      for (const res of costKeys) {
+        expect(RESOURCES).toContain(res)
+        const amount = recipe.cost[res]
+        expect(typeof amount).toBe('number')
+        expect(Number(amount)).toBeGreaterThan(0)
+      }
+    }
+  })
 })
